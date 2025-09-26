@@ -16,8 +16,15 @@ var authRouter = require("./routes/auth");
 var journalRouter = require("./routes/journals");
 var moodRouter = require("./routes/moods");
 var planRouter = require("./routes/plans");
+var vnpayRouter = require("./routes/vnpay");
 
 dotenv.config();
+console.log("[DEBUG] SMTP_HOST:", process.env.SMTP_HOST);
+console.log("[DEBUG] SMTP_USER:", process.env.SMTP_USER);
+console.log(
+  "[DEBUG] SMTP_PASS:",
+  process.env.SMTP_PASS ? "******" : "undefined"
+);
 var app = express();
 
 // view engine setup
@@ -56,6 +63,16 @@ var swaggerSpec = swaggerJsdoc({
   definition: {
     openapi: "3.0.0",
     info: { title: "Everquill API", version: "1.0.0" },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
+    },
+    security: [{ bearerAuth: [] }],
     servers: [{ url: "http://localhost:" + (process.env.PORT || 3000) }],
   },
   apis: ["./routes/*.js", "./models/*.js"],
@@ -68,6 +85,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/journals", journalRouter);
 app.use("/api/moods", moodRouter);
 app.use("/api/plans", planRouter);
+app.use("/api/payments/vnpay", vnpayRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

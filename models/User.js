@@ -7,6 +7,8 @@ var userSchema = new mongoose.Schema({
   googleId: { type: String },
   isEmailVerified: { type: Boolean, default: false },
   emailVerificationCode: { type: String },
+  resetPasswordCode: { type: String },
+  refreshToken: { type: String },
   plan: { type: String, enum: ["free", "premium"], default: "free" },
   createdAt: { type: Date, default: Date.now },
 });

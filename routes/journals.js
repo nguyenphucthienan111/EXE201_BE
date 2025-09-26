@@ -2,14 +2,30 @@ var express = require("express");
 var router = express.Router();
 var Journal = require("../models/Journal");
 var { requireAuth, requirePremium } = require("../middlewares/auth");
+var {
+  enforceJournalCreateLimit,
+  trackJournalCreate,
+  enforceBasicSuggestLimit,
+  trackBasicSuggest,
+} = require("../middlewares/freemium");
 
 // Create
-router.post("/", requireAuth, function (req, res) {
+/**
+ * @openapi
+ * /api/journals:
+ *   post:
+ *     summary: "Create journal entry (free: max 2/day)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post("/", requireAuth, enforceJournalCreateLimit, function (req, res) {
   var data = Object.assign({}, req.body, { userId: req.user._id });
   new Journal(data)
     .save()
     .then(function (doc) {
-      res.status(201).json(doc);
+      trackJournalCreate(req, res, function () {
+        res.status(201).json(doc);
+      });
     })
     .catch(function (err) {
       res.status(500).json({ message: err.message });
@@ -77,6 +93,7 @@ router.delete("/:id", requireAuth, function (req, res) {
  * /api/journals/suggest:
  *   post:
  *     summary: Gợi ý nội dung nhật ký cho user premium
+ *     tags: [Journals]
  *     requestBody:
  *       required: false
  *       content:
@@ -109,12 +126,55 @@ router.post("/suggest", requireAuth, requirePremium, async function (req, res) {
   res.json({ topic: topic, suggestions: suggestions });
 });
 
+// Free/basic suggestions with daily cap
+/**
+ * @openapi
+ * /api/journals/suggest-basic:
+ *   post:
+ *     summary: Basic writing prompts (free up to 3/day)
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Suggestions }
+ */
+router.post(
+  "/suggest-basic",
+  requireAuth,
+  enforceBasicSuggestLimit,
+  function (req, res) {
+    var prompts = [
+      "How do you feel today?",
+      "What is one good thing that happened today?",
+      "What challenged you today and how did you respond?",
+    ];
+    trackBasicSuggest(req, res, function () {
+      res.json({ suggestions: prompts });
+    });
+  }
+);
+
+// Premium assistant (placeholder)
+/**
+ * @openapi
+ * /api/journals/assistant:
+ *   post:
+ *     summary: Personal AI assistant (premium)
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post("/assistant", requireAuth, requirePremium, function (req, res) {
+  var question = req.body.question || "How can I help?";
+  var answer = "This is a placeholder assistant response to: " + question;
+  res.json({ answer: answer });
+});
+
 // Premium sentiment analysis (placeholder)
 /**
  * @openapi
  * /api/journals/analyze:
  *   post:
  *     summary: Phân tích cảm xúc nội dung nhật ký cho user premium
+ *     tags: [Journals]
  *     requestBody:
  *       required: true
  *       content:
@@ -152,6 +212,7 @@ router.post("/analyze", requireAuth, requirePremium, async function (req, res) {
  * /api/journals/sync/{id}:
  *   post:
  *     summary: Đánh dấu nhật ký đã đồng bộ cloud (premium only)
+ *     tags: [Journals]
  *     parameters:
  *       - in: path
  *         name: id

@@ -7,6 +7,9 @@ var moodSchema = new mongoose.Schema({
   score: { type: Number, min: 1, max: 10 },
   notes: { type: String },
   analysis: { type: String }, // Kết quả phân tích tâm trạng cho premium
+  stress: { type: Number, min: 1, max: 10 },
+  anxiety: { type: Number, min: 1, max: 10 },
+  energy: { type: Number, min: 1, max: 10 },
 });
 
 module.exports = mongoose.model("Mood", moodSchema);
