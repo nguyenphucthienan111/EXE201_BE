@@ -16,7 +16,8 @@ var authRouter = require("./routes/auth");
 var journalRouter = require("./routes/journals");
 var moodRouter = require("./routes/moods");
 var planRouter = require("./routes/plans");
-var vnpayRouter = require("./routes/vnpay");
+var paymentRouter = require("./routes/payments");
+var notificationRouter = require("./routes/notifications");
 
 dotenv.config();
 console.log("[DEBUG] SMTP_HOST:", process.env.SMTP_HOST);
@@ -49,6 +50,12 @@ mongoose
   .connect(mongoUri)
   .then(function () {
     console.log("Mongo connected");
+
+    // Initialize notification scheduler after DB connection
+    const {
+      initNotificationScheduler,
+    } = require("./utils/notificationScheduler");
+    initNotificationScheduler();
   })
   .catch(function (err) {
     console.error("Mongo error", err.message);
@@ -85,7 +92,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/journals", journalRouter);
 app.use("/api/moods", moodRouter);
 app.use("/api/plans", planRouter);
-app.use("/api/payments/vnpay", vnpayRouter);
+app.use("/api/payments", paymentRouter);
+app.use("/api/notifications", notificationRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

@@ -7,6 +7,8 @@
     "dev": "nodemon ./bin/www"
   },
   "dependencies": {
+    "@payos/node": "^1.0.10",
+    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "~1.4.4",
     "cors": "^2.8.5",
@@ -24,6 +26,7 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
+    "qs": "^6.14.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0"
