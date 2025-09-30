@@ -7,6 +7,7 @@
     "dev": "nodemon ./bin/www"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@payos/node": "^1.0.10",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",

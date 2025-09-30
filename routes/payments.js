@@ -566,7 +566,7 @@ router.post("/webhook", async (req, res) => {
       if (payment) {
         payment.status = "failed";
         payment.cancelledAt = new Date();
-        await payment.save();
+    await payment.save();
 
         console.log(`Payment ${payment._id} marked as failed`);
 
