@@ -42,32 +42,98 @@ const generateWritingPrompts = async (
         "What challenged you today and how did you respond?",
         "Write about someone who made you smile today.",
         "What are you looking forward to tomorrow?",
+        "Describe a moment when you felt proud of yourself.",
+        "What is something you learned about yourself recently?",
+        "Write about a challenge you overcame this week.",
+        "What brings you peace and calm?",
+        "How have you grown as a person lately?",
+      ],
+      happy: [
+        "What specifically made you feel happy today?",
+        "How can you recreate this positive feeling?",
+        "Who or what contributed to your happiness?",
+        "What are you most grateful for right now?",
+        "Describe a moment that brought you pure joy.",
+        "What positive energy do you want to carry forward?",
+        "How can you share this happiness with others?",
+        "What does this happiness teach you about yourself?",
+        "What small things in life make you smile?",
+        "How can you maintain this positive mindset?",
+      ],
+      sad: [
+        "What is making you feel sad right now?",
+        "How can you be kind to yourself during this difficult time?",
+        "What small thing might help you feel a bit better?",
+        "Who can you reach out to for support?",
+        "What has helped you through sadness before?",
+        "What would you tell a friend going through this?",
+        "What are some things you still appreciate despite feeling sad?",
+        "How can you honor these feelings without being overwhelmed?",
+        "What gentle activities might bring you comfort?",
+        "What does this sadness teach you about what matters to you?",
+      ],
+      anxious: [
+        "What thoughts are making you feel anxious?",
+        "What are 3 things you can control in this situation?",
+        "What breathing or grounding techniques help you?",
+        "What evidence do you have that things will be okay?",
+        "How can you break this worry into smaller, manageable pieces?",
+        "What has helped you through anxiety before?",
+        "What would you say to calm a worried friend?",
+        "What activities help you feel more centered?",
+        "How can you practice self-compassion right now?",
+        "What small step can you take to address your concerns?",
+      ],
+      stressed: [
+        "What is causing you stress right now and how can you address it?",
+        "Describe a moment when you felt calm today.",
+        "What helps you relax when you feel overwhelmed?",
+        "Write about a coping strategy that works for you.",
+        "What can you let go of to reduce your stress?",
+        "How can you create more balance in your life?",
+        "What boundaries do you need to set?",
+        "What activities help you recharge?",
+        "How can you practice mindfulness in this moment?",
+        "What support do you need right now?",
       ],
       gratitude: [
         "List 3 things you're grateful for today and why.",
         "Write about a person you're thankful to have in your life.",
         "What small moment brought you joy today?",
         "Describe something beautiful you noticed today.",
+        "What challenge are you grateful to have overcome?",
+        "Who has made a positive impact on your life recently?",
+        "What simple pleasure are you thankful for?",
+        "How has gratitude changed your perspective?",
+        "What opportunity are you grateful to have?",
+        "What lesson are you thankful to have learned?",
       ],
       reflection: [
         "What did you learn about yourself today?",
         "How have you grown compared to last month?",
         "What pattern in your emotions have you noticed lately?",
         "Write about a recent challenge and what it taught you.",
-      ],
-      stress: [
-        "What is causing you stress right now and how can you address it?",
-        "Describe a moment when you felt calm today.",
-        "What helps you relax when you feel overwhelmed?",
-        "Write about a coping strategy that works for you.",
+        "What values are most important to you right now?",
+        "How have your priorities shifted recently?",
+        "What would you do differently if you could?",
+        "What strengths have you discovered in yourself?",
+        "How do you want to evolve as a person?",
+        "What wisdom would you share with your past self?",
       ],
     };
 
     // If AI is not available, use fallback
     if (!model) {
-      const promptCategory = topic || (mood ? "reflection" : "basic");
+      console.log("🤖 AI not available, using fallback prompts");
+      const promptCategory = topic || mood || "basic";
       const prompts = fallbackPrompts[promptCategory] || fallbackPrompts.basic;
-      return prompts.slice(0, isPremium ? 10 : 3);
+      const result = prompts.slice(0, isPremium ? 10 : 3);
+      console.log(
+        `📝 Returning ${result.length} fallback prompts for ${
+          isPremium ? "premium" : "free"
+        } user (category: ${promptCategory})`
+      );
+      return result;
     }
 
     // Construct AI prompt
@@ -99,7 +165,13 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
     try {
       const suggestions = JSON.parse(text);
       if (Array.isArray(suggestions)) {
-        return suggestions.slice(0, isPremium ? 10 : 3);
+        const aiResult = suggestions.slice(0, isPremium ? 10 : 3);
+        console.log(
+          `🤖 AI returned ${aiResult.length} suggestions for ${
+            isPremium ? "premium" : "free"
+          } user`
+        );
+        return aiResult;
       }
     } catch (parseError) {
       console.warn("⚠️ AI response not valid JSON, parsing manually");
@@ -112,7 +184,13 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
       .map((line) => line.replace(/^[\d\-\*\.\s]+/, "").trim())
       .filter((line) => line.length > 10);
 
-    return lines.slice(0, isPremium ? 10 : 3);
+    const manualResult = lines.slice(0, isPremium ? 10 : 3);
+    console.log(
+      `📝 Manual parsing returned ${manualResult.length} suggestions for ${
+        isPremium ? "premium" : "free"
+      } user`
+    );
+    return manualResult;
   } catch (error) {
     console.error("❌ Error generating AI prompts:", error.message);
 
@@ -121,9 +199,189 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
       "How do you feel today and what made you feel this way?",
       "What is one good thing that happened today?",
       "What challenged you today and how did you respond?",
+      "Write about someone who made you smile today.",
+      "What are you looking forward to tomorrow?",
+      "Describe a moment when you felt proud of yourself.",
+      "What is something you learned about yourself recently?",
+      "Write about a challenge you overcame this week.",
+      "What brings you peace and calm?",
+      "How have you grown as a person lately?",
     ];
 
-    return fallbackPrompts.slice(0, isPremium ? 10 : 3);
+    const errorResult = fallbackPrompts.slice(0, isPremium ? 10 : 3);
+    console.log(
+      `🔄 Error fallback returned ${errorResult.length} suggestions for ${
+        isPremium ? "premium" : "free"
+      } user`
+    );
+    return errorResult;
+  }
+};
+
+/**
+ * Generate advanced writing prompts for premium users with specific topics
+ * @param {string} topic - Specific topic (Gratitude, Forgiveness, Goals, etc.)
+ * @param {string} mood - Current user mood
+ * @returns {Promise<Array>} Array of 10 advanced writing prompts
+ */
+const generateAdvancedPrompts = async (topic = "reflection", mood = "") => {
+  try {
+    // Advanced fallback prompts by topic
+    const advancedPrompts = {
+      Gratitude: [
+        "Write about a person who has made a profound impact on your life and why you're grateful for them.",
+        "Describe a challenging experience that you're now grateful for and what it taught you.",
+        "List 10 small, everyday things you're grateful for that you might normally take for granted.",
+        "Write a letter of gratitude to your past self for the strength they showed during difficult times.",
+        "Reflect on a moment when someone's kindness unexpectedly touched your heart.",
+        "What are you grateful for about your current season of life, even if it's challenging?",
+        "Describe how practicing gratitude has changed your perspective on life.",
+        "Write about a place that holds special meaning for you and why you're grateful for it.",
+        "What lesson are you grateful to have learned from a mistake or failure?",
+        "Reflect on the people, experiences, or opportunities that have shaped who you are today.",
+      ],
+      Forgiveness: [
+        "Write about someone you need to forgive and what that forgiveness would mean for your peace.",
+        "Describe a situation where you need to forgive yourself and how you can begin that process.",
+        "Reflect on a time when someone forgave you and how that impacted your relationship.",
+        "What does forgiveness mean to you, and how has your understanding of it evolved?",
+        "Write about the difference between forgiveness and reconciliation in your life.",
+        "Describe how holding onto resentment has affected you and what letting go might look like.",
+        "Reflect on a time when you forgave someone and how it changed your perspective.",
+        "What boundaries do you need to set while still practicing forgiveness?",
+        "Write about the role of self-forgiveness in your personal growth journey.",
+        "How can you practice forgiveness as an act of self-care and healing?",
+      ],
+      Goals: [
+        "Write about your most important goal for this year and why it matters to you.",
+        "Describe the person you want to become in 5 years and what steps will get you there.",
+        "Reflect on a goal you achieved and what the journey taught you about yourself.",
+        "What fears or limiting beliefs are holding you back from pursuing your dreams?",
+        "Write about a goal that scares you but excites you at the same time.",
+        "Describe how your goals align with your core values and life purpose.",
+        "What support system do you need to achieve your most important goals?",
+        "Reflect on a time when you had to adjust your goals and what you learned from that.",
+        "Write about the difference between goals that fulfill you versus those that drain you.",
+        "How can you break down your biggest goal into smaller, manageable steps?",
+      ],
+      Relationships: [
+        "Write about the most important relationship in your life and what makes it special.",
+        "Describe a relationship that has taught you something valuable about yourself.",
+        "Reflect on how you show love and how you prefer to receive it.",
+        "What boundaries do you need to set in your relationships to protect your well-being?",
+        "Write about a time when you had to have a difficult conversation and what you learned.",
+        "Describe the qualities you value most in your closest friendships.",
+        "Reflect on how your relationships have evolved as you've grown as a person.",
+        "What does healthy conflict resolution look like in your relationships?",
+        "Write about a relationship that ended and what it taught you about love and loss.",
+        "How do you maintain meaningful connections while also protecting your energy?",
+      ],
+      Self_Discovery: [
+        "Write about a moment when you felt most authentically yourself.",
+        "Describe the values that are most important to you and how they guide your decisions.",
+        "Reflect on how your understanding of yourself has changed over the past year.",
+        "What aspects of your personality do you want to develop or change?",
+        "Write about a time when you surprised yourself with your own strength or capability.",
+        "Describe the things that make you feel most alive and energized.",
+        "Reflect on the stories you tell yourself about who you are and whether they serve you.",
+        "What would you do if you weren't afraid of what others might think?",
+        "Write about the parts of yourself you're still learning to accept and love.",
+        "How do you want to be remembered, and what does that say about your priorities?",
+      ],
+      reflection: [
+        "What did you learn about yourself today?",
+        "How have you grown compared to last month?",
+        "What pattern in your emotions have you noticed lately?",
+        "Write about a recent challenge and what it taught you.",
+        "What values are most important to you right now?",
+        "How have your priorities shifted recently?",
+        "What would you do differently if you could?",
+        "What strengths have you discovered in yourself?",
+        "How do you want to evolve as a person?",
+        "What wisdom would you share with your past self?",
+      ],
+    };
+
+    // If AI is not available, use advanced fallback
+    if (!model) {
+      console.log("🤖 AI not available, using advanced fallback prompts");
+      const prompts = advancedPrompts[topic] || advancedPrompts.reflection;
+      console.log(
+        `📝 Returning ${prompts.length} advanced prompts for topic: ${topic}`
+      );
+      return prompts;
+    }
+
+    // Construct advanced AI prompt
+    const aiPrompt = `Generate 10 sophisticated, in-depth writing prompts for mental health journaling focused on the topic: "${topic}".
+
+Context:
+- User's current mood: ${mood || "not specified"}
+- Topic focus: ${topic}
+- Tone: Thoughtful, introspective, encouraging deep reflection
+- Language: English (preferably) or Vietnamese
+- Target: Advanced emotional processing and personal growth
+
+Requirements:
+- Each prompt should be 1-2 sentences
+- Focus on deep self-reflection and personal growth
+- Encourage vulnerability and honest self-examination
+- Be specific to the topic while remaining universal
+- Avoid clichés and surface-level questions
+- Encourage meaningful insights and discoveries
+
+Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
+
+    const result = await model.generateContent(aiPrompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Try to parse JSON response
+    try {
+      const suggestions = JSON.parse(text);
+      if (Array.isArray(suggestions)) {
+        console.log(
+          `🤖 AI returned ${suggestions.length} advanced suggestions for topic: ${topic}`
+        );
+        return suggestions.slice(0, 10);
+      }
+    } catch (parseError) {
+      console.warn("⚠️ AI response not valid JSON, using fallback");
+    }
+
+    // Use advanced fallback prompts
+    const prompts = advancedPrompts[topic] || advancedPrompts.reflection;
+    console.log(
+      `📝 Using ${prompts.length} advanced fallback prompts for topic: ${topic}`
+    );
+    return prompts;
+  } catch (error) {
+    console.error("❌ Error generating advanced prompts:", error.message);
+
+    // Return advanced fallback prompts on error
+    const advancedPrompts = {
+      Gratitude: [
+        "Write about a person who has made a profound impact on your life and why you're grateful for them.",
+        "Describe a challenging experience that you're now grateful for and what it taught you.",
+        "List 10 small, everyday things you're grateful for that you might normally take for granted.",
+      ],
+      Forgiveness: [
+        "Write about someone you need to forgive and what that forgiveness would mean for your peace.",
+        "Describe a situation where you need to forgive yourself and how you can begin that process.",
+        "Reflect on a time when someone forgave you and how that impacted your relationship.",
+      ],
+      Goals: [
+        "Write about your most important goal for this year and why it matters to you.",
+        "Describe the person you want to become in 5 years and what steps will get you there.",
+        "Reflect on a goal you achieved and what the journey taught you about yourself.",
+      ],
+    };
+
+    const prompts = advancedPrompts[topic] || advancedPrompts.Gratitude;
+    console.log(
+      `🔄 Error fallback returned ${prompts.length} advanced prompts for topic: ${topic}`
+    );
+    return prompts;
   }
 };
 
@@ -715,6 +973,7 @@ const isAIAvailable = () => {
 
 module.exports = {
   generateWritingPrompts,
+  generateAdvancedPrompts,
   generateMoodReflections,
   analyzeSentiment,
   generateImprovementPlan,

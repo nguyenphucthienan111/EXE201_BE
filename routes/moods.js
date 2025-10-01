@@ -10,7 +10,7 @@ var { generateMoodReflections, isAIAvailable } = require("../utils/aiService");
  * @openapi
  * /api/moods:
  *   post:
- *     summary: Upsert mood for a date
+ *     summary: "Track daily mood & mental index (Free & Premium: unlimited)"
  *     tags: [Moods]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -90,7 +90,7 @@ router.get("/", requireAuth, function (req, res) {
  * @openapi
  * /api/moods/insights:
  *   get:
- *     summary: Premium mood insights (weekly/monthly averages)
+ *     summary: "Advanced mood insights & trends (Premium only)"
  *     tags: [Moods]
  *     security: [{ bearerAuth: [] }]
  *     responses:
@@ -137,7 +137,7 @@ function aggregateAvg(userId, startDate) {
  * @openapi
  * /api/moods/calendar:
  *   get:
- *     summary: Get mood data formatted for calendar UI
+ *     summary: "Mood calendar with statistics (Free & Premium: full access)"
  *     tags: [Moods]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -275,7 +275,7 @@ router.get("/calendar", requireAuth, async function (req, res) {
  * @openapi
  * /api/moods/suggestions:
  *   post:
- *     summary: Get mood-based reflection questions (free)
+ *     summary: "Mood-based reflection questions (Free & Premium: available)"
  *     tags: [Moods]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:

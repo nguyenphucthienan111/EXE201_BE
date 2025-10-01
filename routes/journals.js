@@ -10,6 +10,7 @@ var {
 } = require("../middlewares/freemium");
 var {
   generateWritingPrompts,
+  generateAdvancedPrompts,
   generateMoodReflections,
   analyzeSentiment,
   generateImprovementPlan,
@@ -18,14 +19,81 @@ var {
   isAIAvailable,
 } = require("../utils/aiService");
 
-// Create
+// Create journal entry
 /**
  * @openapi
  * /api/journals:
  *   post:
- *     summary: "Create journal entry (free: max 2/day)"
+ *     summary: "Create journal entry (Free: max 2/day, Premium: unlimited)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Journal entry title
+ *                 example: "My reflection today"
+ *               content:
+ *                 type: string
+ *                 description: Journal entry content
+ *                 example: "Today was challenging but I learned a lot about myself..."
+ *               mood:
+ *                 type: string
+ *                 description: Current mood
+ *                 example: "reflective"
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Tags for categorization
+ *                 example: ["growth", "learning", "self-reflection"]
+ *     responses:
+ *       201:
+ *         description: Journal created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 userId:
+ *                   type: string
+ *                 title:
+ *                   type: string
+ *                 content:
+ *                   type: string
+ *                 mood:
+ *                   type: string
+ *                 tags:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
+ *       403:
+ *         description: Daily limit reached (Free users only)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Free plan limit reached: max 2 journal entries per day"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.post("/", requireAuth, enforceJournalCreateLimit, function (req, res) {
   var data = Object.assign({}, req.body, { userId: req.user._id });
@@ -41,6 +109,52 @@ router.post("/", requireAuth, enforceJournalCreateLimit, function (req, res) {
     });
 });
 
+/**
+ * @openapi
+ * /api/journals:
+ *   get:
+ *     summary: "Get journal entries (Free & Premium: unlimited access)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: number
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: number
+ *           default: 10
+ *         description: Number of entries per page
+ *     responses:
+ *       200:
+ *         description: List of journal entries
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   title:
+ *                     type: string
+ *                   content:
+ *                     type: string
+ *                   mood:
+ *                     type: string
+ *                   tags:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   createdAt:
+ *                     type: string
+ *                     format: date-time
+ */
 // List (with simple pagination)
 router.get("/", requireAuth, function (req, res) {
   var page = Number(req.query.page || 1);
@@ -101,7 +215,7 @@ router.delete("/:id", requireAuth, function (req, res) {
  * @openapi
  * /api/journals/suggest:
  *   post:
- *     summary: Advanced AI writing suggestions for premium users (unlimited)
+ *     summary: "Advanced AI writing suggestions (Premium: unlimited, specific topics)"
  *     tags: [Journals]
  *     requestBody:
  *       required: false
@@ -149,7 +263,7 @@ router.post("/suggest", requireAuth, requirePremium, async function (req, res) {
     const { topic = "reflection", mood, journalId } = req.body;
 
     // Generate premium AI suggestions (unlimited, more sophisticated)
-    const suggestions = await generateWritingPrompts(mood, topic, true); // true = premium user
+    const suggestions = await generateAdvancedPrompts(topic, mood); // Advanced prompts for premium users
 
     // Save suggestions to journal if requested
     let savedToJournal = false;
@@ -186,7 +300,7 @@ router.post("/suggest", requireAuth, requirePremium, async function (req, res) {
  * @openapi
  * /api/journals/suggest-basic:
  *   post:
- *     summary: AI-powered basic writing prompts (free up to 3/day)
+ *     summary: "AI writing suggestions (Free: 3/day, Premium: also available)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -265,7 +379,7 @@ router.post(
  * @openapi
  * /api/journals/assistant:
  *   post:
- *     summary: AI-powered personal mental health assistant (premium)
+ *     summary: "AI mental health assistant (Premium only)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -365,7 +479,7 @@ router.post(
  * @openapi
  * /api/journals/analyze:
  *   post:
- *     summary: Advanced AI sentiment analysis with mental health indicators (premium)
+ *     summary: "AI sentiment analysis - depression/anxiety detection (Premium only)"
  *     tags: [Journals]
  *     requestBody:
  *       required: true
@@ -501,7 +615,7 @@ router.post(
  * @openapi
  * /api/journals/dashboard:
  *   get:
- *     summary: Premium dashboard with charts, analytics, and keyword analysis
+ *     summary: "Analytics dashboard with charts & insights (Premium only)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -671,7 +785,7 @@ router.get(
  * @openapi
  * /api/journals/improvement-plan:
  *   post:
- *     summary: Generate personalized mental improvement plan (premium)
+ *     summary: "Personalized wellness improvement plan (Premium only)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -892,7 +1006,7 @@ function generateProgressNotes(journalStats, moodTrends) {
  * @openapi
  * /api/journals/usage:
  *   get:
- *     summary: Get current usage limits for free users
+ *     summary: "Daily usage tracking (Free & Premium: monitor limits)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
  *     responses:

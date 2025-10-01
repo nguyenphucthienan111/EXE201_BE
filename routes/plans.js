@@ -9,7 +9,7 @@ var Notification = require("../models/Notification");
  * @openapi
  * /api/plans/set:
  *   post:
- *     summary: Set current user's plan (mock)
+ *     summary: "Set user plan (Development only - Production protected)"
  *     tags: [Plans]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -63,7 +63,7 @@ router.post("/set", requireAuth, async function (req, res) {
  * @openapi
  * /api/plans/me:
  *   get:
- *     summary: Get my current plan
+ *     summary: "Get current plan (Free & Premium: basic info)"
  *     tags: [Plans]
  *     security: [{ bearerAuth: [] }]
  *     responses:
@@ -165,7 +165,7 @@ router.get("/subscription", requireAuth, async function (req, res) {
  * /api/plans/admin/users:
  *   get:
  *     tags: [Plans]
- *     summary: Admin - Xem tất cả users và subscription status
+ *     summary: "Admin dashboard - All users & subscriptions (Admin only)"
  *     security:
  *       - bearerAuth: []
  *     parameters:

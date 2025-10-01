@@ -9,7 +9,7 @@ const { triggerNotificationCheck } = require("../utils/notificationScheduler");
  * /api/notifications:
  *   get:
  *     tags: [Notifications]
- *     summary: Lấy danh sách notifications của user
+ *     summary: "Get user notifications (Free & Premium: full access)"
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -105,7 +105,7 @@ router.get("/", requireAuth, async (req, res) => {
  * /api/notifications/unread-count:
  *   get:
  *     tags: [Notifications]
- *     summary: Lấy số lượng notifications chưa đọc (cho header badge)
+ *     summary: "Unread notifications count for header badge (Free & Premium)"
  *     security:
  *       - bearerAuth: []
  *     responses:
