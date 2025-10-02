@@ -1,21 +1,25 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
+// Load environment variables
+require("dotenv").config();
+
 // Initialize Gemini AI
 let genAI;
 let model;
 
 try {
-  const apiKey =
-    process.env.GEMINI_API_KEY || "AIzaSyDt91g9nNFgR4Y-lO1J4nRvDvJ_QT1tE_M";
+  const apiKey = process.env.GEMINI_API_KEY;
 
-  if (!apiKey || apiKey === "AIzaSyDt91g9nNFgR4Y-lO1J4nRvDvJ_QT1tE_M") {
+  if (!apiKey) {
     console.warn(
-      "⚠️ GEMINI_API_KEY not set. AI suggestions will use fallback prompts."
+      "⚠️ GEMINI_API_KEY is missing. AI features will throw errors until it is set."
     );
   } else {
     genAI = new GoogleGenerativeAI(apiKey);
-    model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    console.log("✅ Google Gemini AI initialized successfully.");
+    model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    console.log(
+      "✅ Google Gemini AI initialized with provided GEMINI_API_KEY."
+    );
   }
 } catch (error) {
   console.error("❌ Gemini AI initialization error:", error.message);
@@ -34,107 +38,12 @@ const generateWritingPrompts = async (
   isPremium = false
 ) => {
   try {
-    // Fallback prompts if AI not available
-    const fallbackPrompts = {
-      basic: [
-        "How do you feel today and what made you feel this way?",
-        "What is one good thing that happened today?",
-        "What challenged you today and how did you respond?",
-        "Write about someone who made you smile today.",
-        "What are you looking forward to tomorrow?",
-        "Describe a moment when you felt proud of yourself.",
-        "What is something you learned about yourself recently?",
-        "Write about a challenge you overcame this week.",
-        "What brings you peace and calm?",
-        "How have you grown as a person lately?",
-      ],
-      happy: [
-        "What specifically made you feel happy today?",
-        "How can you recreate this positive feeling?",
-        "Who or what contributed to your happiness?",
-        "What are you most grateful for right now?",
-        "Describe a moment that brought you pure joy.",
-        "What positive energy do you want to carry forward?",
-        "How can you share this happiness with others?",
-        "What does this happiness teach you about yourself?",
-        "What small things in life make you smile?",
-        "How can you maintain this positive mindset?",
-      ],
-      sad: [
-        "What is making you feel sad right now?",
-        "How can you be kind to yourself during this difficult time?",
-        "What small thing might help you feel a bit better?",
-        "Who can you reach out to for support?",
-        "What has helped you through sadness before?",
-        "What would you tell a friend going through this?",
-        "What are some things you still appreciate despite feeling sad?",
-        "How can you honor these feelings without being overwhelmed?",
-        "What gentle activities might bring you comfort?",
-        "What does this sadness teach you about what matters to you?",
-      ],
-      anxious: [
-        "What thoughts are making you feel anxious?",
-        "What are 3 things you can control in this situation?",
-        "What breathing or grounding techniques help you?",
-        "What evidence do you have that things will be okay?",
-        "How can you break this worry into smaller, manageable pieces?",
-        "What has helped you through anxiety before?",
-        "What would you say to calm a worried friend?",
-        "What activities help you feel more centered?",
-        "How can you practice self-compassion right now?",
-        "What small step can you take to address your concerns?",
-      ],
-      stressed: [
-        "What is causing you stress right now and how can you address it?",
-        "Describe a moment when you felt calm today.",
-        "What helps you relax when you feel overwhelmed?",
-        "Write about a coping strategy that works for you.",
-        "What can you let go of to reduce your stress?",
-        "How can you create more balance in your life?",
-        "What boundaries do you need to set?",
-        "What activities help you recharge?",
-        "How can you practice mindfulness in this moment?",
-        "What support do you need right now?",
-      ],
-      gratitude: [
-        "List 3 things you're grateful for today and why.",
-        "Write about a person you're thankful to have in your life.",
-        "What small moment brought you joy today?",
-        "Describe something beautiful you noticed today.",
-        "What challenge are you grateful to have overcome?",
-        "Who has made a positive impact on your life recently?",
-        "What simple pleasure are you thankful for?",
-        "How has gratitude changed your perspective?",
-        "What opportunity are you grateful to have?",
-        "What lesson are you thankful to have learned?",
-      ],
-      reflection: [
-        "What did you learn about yourself today?",
-        "How have you grown compared to last month?",
-        "What pattern in your emotions have you noticed lately?",
-        "Write about a recent challenge and what it taught you.",
-        "What values are most important to you right now?",
-        "How have your priorities shifted recently?",
-        "What would you do differently if you could?",
-        "What strengths have you discovered in yourself?",
-        "How do you want to evolve as a person?",
-        "What wisdom would you share with your past self?",
-      ],
-    };
-
-    // If AI is not available, use fallback
     if (!model) {
-      console.log("🤖 AI not available, using fallback prompts");
-      const promptCategory = topic || mood || "basic";
-      const prompts = fallbackPrompts[promptCategory] || fallbackPrompts.basic;
-      const result = prompts.slice(0, isPremium ? 10 : 3);
-      console.log(
-        `📝 Returning ${result.length} fallback prompts for ${
-          isPremium ? "premium" : "free"
-        } user (category: ${promptCategory})`
-      );
-      return result;
+      throw new Error("AI model not available - GEMINI_API_KEY required");
     }
+
+    // Detect user language preference (default to Vietnamese for Vietnamese users)
+    const userLanguage = detectUserLanguage();
 
     // Construct AI prompt
     const aiPrompt = `Generate ${
@@ -145,7 +54,7 @@ Context:
 - User's current mood: ${mood || "not specified"}
 - Topic focus: ${topic || "general reflection"}
 - Tone: Supportive, non-judgmental, encouraging
-- Language: Vietnamese (if possible) or English
+- Language: ${userLanguage === "vi" ? "Vietnamese (Tiếng Việt)" : "English"}
 - Target: Personal emotional processing and self-reflection
 
 Requirements:
@@ -154,6 +63,11 @@ Requirements:
 - Avoid triggering or negative language
 - Encourage positive introspection
 - Be specific and actionable
+- ${
+      userLanguage === "vi"
+        ? "Use Vietnamese language naturally and culturally appropriate"
+        : "Use English language naturally"
+    }
 
 Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
 
@@ -177,7 +91,7 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
       console.warn("⚠️ AI response not valid JSON, parsing manually");
     }
 
-    // Fallback: Parse text response manually
+    // Manual parse as a minimal fallback for non-JSON AI responses
     const lines = text
       .split("\n")
       .filter((line) => line.trim())
@@ -193,28 +107,7 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
     return manualResult;
   } catch (error) {
     console.error("❌ Error generating AI prompts:", error.message);
-
-    // Return fallback prompts on error
-    const fallbackPrompts = [
-      "How do you feel today and what made you feel this way?",
-      "What is one good thing that happened today?",
-      "What challenged you today and how did you respond?",
-      "Write about someone who made you smile today.",
-      "What are you looking forward to tomorrow?",
-      "Describe a moment when you felt proud of yourself.",
-      "What is something you learned about yourself recently?",
-      "Write about a challenge you overcame this week.",
-      "What brings you peace and calm?",
-      "How have you grown as a person lately?",
-    ];
-
-    const errorResult = fallbackPrompts.slice(0, isPremium ? 10 : 3);
-    console.log(
-      `🔄 Error fallback returned ${errorResult.length} suggestions for ${
-        isPremium ? "premium" : "free"
-      } user`
-    );
-    return errorResult;
+    throw error; // Re-throw to let caller handle
   }
 };
 
@@ -226,91 +119,12 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
  */
 const generateAdvancedPrompts = async (topic = "reflection", mood = "") => {
   try {
-    // Advanced fallback prompts by topic
-    const advancedPrompts = {
-      Gratitude: [
-        "Write about a person who has made a profound impact on your life and why you're grateful for them.",
-        "Describe a challenging experience that you're now grateful for and what it taught you.",
-        "List 10 small, everyday things you're grateful for that you might normally take for granted.",
-        "Write a letter of gratitude to your past self for the strength they showed during difficult times.",
-        "Reflect on a moment when someone's kindness unexpectedly touched your heart.",
-        "What are you grateful for about your current season of life, even if it's challenging?",
-        "Describe how practicing gratitude has changed your perspective on life.",
-        "Write about a place that holds special meaning for you and why you're grateful for it.",
-        "What lesson are you grateful to have learned from a mistake or failure?",
-        "Reflect on the people, experiences, or opportunities that have shaped who you are today.",
-      ],
-      Forgiveness: [
-        "Write about someone you need to forgive and what that forgiveness would mean for your peace.",
-        "Describe a situation where you need to forgive yourself and how you can begin that process.",
-        "Reflect on a time when someone forgave you and how that impacted your relationship.",
-        "What does forgiveness mean to you, and how has your understanding of it evolved?",
-        "Write about the difference between forgiveness and reconciliation in your life.",
-        "Describe how holding onto resentment has affected you and what letting go might look like.",
-        "Reflect on a time when you forgave someone and how it changed your perspective.",
-        "What boundaries do you need to set while still practicing forgiveness?",
-        "Write about the role of self-forgiveness in your personal growth journey.",
-        "How can you practice forgiveness as an act of self-care and healing?",
-      ],
-      Goals: [
-        "Write about your most important goal for this year and why it matters to you.",
-        "Describe the person you want to become in 5 years and what steps will get you there.",
-        "Reflect on a goal you achieved and what the journey taught you about yourself.",
-        "What fears or limiting beliefs are holding you back from pursuing your dreams?",
-        "Write about a goal that scares you but excites you at the same time.",
-        "Describe how your goals align with your core values and life purpose.",
-        "What support system do you need to achieve your most important goals?",
-        "Reflect on a time when you had to adjust your goals and what you learned from that.",
-        "Write about the difference between goals that fulfill you versus those that drain you.",
-        "How can you break down your biggest goal into smaller, manageable steps?",
-      ],
-      Relationships: [
-        "Write about the most important relationship in your life and what makes it special.",
-        "Describe a relationship that has taught you something valuable about yourself.",
-        "Reflect on how you show love and how you prefer to receive it.",
-        "What boundaries do you need to set in your relationships to protect your well-being?",
-        "Write about a time when you had to have a difficult conversation and what you learned.",
-        "Describe the qualities you value most in your closest friendships.",
-        "Reflect on how your relationships have evolved as you've grown as a person.",
-        "What does healthy conflict resolution look like in your relationships?",
-        "Write about a relationship that ended and what it taught you about love and loss.",
-        "How do you maintain meaningful connections while also protecting your energy?",
-      ],
-      Self_Discovery: [
-        "Write about a moment when you felt most authentically yourself.",
-        "Describe the values that are most important to you and how they guide your decisions.",
-        "Reflect on how your understanding of yourself has changed over the past year.",
-        "What aspects of your personality do you want to develop or change?",
-        "Write about a time when you surprised yourself with your own strength or capability.",
-        "Describe the things that make you feel most alive and energized.",
-        "Reflect on the stories you tell yourself about who you are and whether they serve you.",
-        "What would you do if you weren't afraid of what others might think?",
-        "Write about the parts of yourself you're still learning to accept and love.",
-        "How do you want to be remembered, and what does that say about your priorities?",
-      ],
-      reflection: [
-        "What did you learn about yourself today?",
-        "How have you grown compared to last month?",
-        "What pattern in your emotions have you noticed lately?",
-        "Write about a recent challenge and what it taught you.",
-        "What values are most important to you right now?",
-        "How have your priorities shifted recently?",
-        "What would you do differently if you could?",
-        "What strengths have you discovered in yourself?",
-        "How do you want to evolve as a person?",
-        "What wisdom would you share with your past self?",
-      ],
-    };
-
-    // If AI is not available, use advanced fallback
     if (!model) {
-      console.log("🤖 AI not available, using advanced fallback prompts");
-      const prompts = advancedPrompts[topic] || advancedPrompts.reflection;
-      console.log(
-        `📝 Returning ${prompts.length} advanced prompts for topic: ${topic}`
-      );
-      return prompts;
+      throw new Error("AI model not available - GEMINI_API_KEY required");
     }
+
+    // Detect user language preference
+    const userLanguage = detectUserLanguage();
 
     // Construct advanced AI prompt
     const aiPrompt = `Generate 10 sophisticated, in-depth writing prompts for mental health journaling focused on the topic: "${topic}".
@@ -319,7 +133,7 @@ Context:
 - User's current mood: ${mood || "not specified"}
 - Topic focus: ${topic}
 - Tone: Thoughtful, introspective, encouraging deep reflection
-- Language: English (preferably) or Vietnamese
+- Language: ${userLanguage === "vi" ? "Vietnamese (Tiếng Việt)" : "English"}
 - Target: Advanced emotional processing and personal growth
 
 Requirements:
@@ -329,6 +143,11 @@ Requirements:
 - Be specific to the topic while remaining universal
 - Avoid clichés and surface-level questions
 - Encourage meaningful insights and discoveries
+- ${
+      userLanguage === "vi"
+        ? "Use Vietnamese language naturally and culturally appropriate"
+        : "Use English language naturally"
+    }
 
 Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
 
@@ -346,42 +165,16 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
         return suggestions.slice(0, 10);
       }
     } catch (parseError) {
-      console.warn("⚠️ AI response not valid JSON, using fallback");
+      // Minimal manual parse when JSON is not returned
+      const lines = text
+        .split("\n")
+        .map((l) => l.replace(/^[\d\-\*\.\s]+/, "").trim())
+        .filter((l) => l.length > 5);
+      return lines.slice(0, 10);
     }
-
-    // Use advanced fallback prompts
-    const prompts = advancedPrompts[topic] || advancedPrompts.reflection;
-    console.log(
-      `📝 Using ${prompts.length} advanced fallback prompts for topic: ${topic}`
-    );
-    return prompts;
   } catch (error) {
     console.error("❌ Error generating advanced prompts:", error.message);
-
-    // Return advanced fallback prompts on error
-    const advancedPrompts = {
-      Gratitude: [
-        "Write about a person who has made a profound impact on your life and why you're grateful for them.",
-        "Describe a challenging experience that you're now grateful for and what it taught you.",
-        "List 10 small, everyday things you're grateful for that you might normally take for granted.",
-      ],
-      Forgiveness: [
-        "Write about someone you need to forgive and what that forgiveness would mean for your peace.",
-        "Describe a situation where you need to forgive yourself and how you can begin that process.",
-        "Reflect on a time when someone forgave you and how that impacted your relationship.",
-      ],
-      Goals: [
-        "Write about your most important goal for this year and why it matters to you.",
-        "Describe the person you want to become in 5 years and what steps will get you there.",
-        "Reflect on a goal you achieved and what the journey taught you about yourself.",
-      ],
-    };
-
-    const prompts = advancedPrompts[topic] || advancedPrompts.Gratitude;
-    console.log(
-      `🔄 Error fallback returned ${prompts.length} advanced prompts for topic: ${topic}`
-    );
-    return prompts;
+    throw error; // Re-throw to let caller handle
   }
 };
 
@@ -391,35 +184,25 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
  * @returns {Promise<Array>} Array of mood-specific questions
  */
 const generateMoodReflections = async (moodType) => {
-  const moodPrompts = {
-    happy: [
-      "What specifically made you feel happy today?",
-      "How can you recreate this positive feeling?",
-      "Who or what contributed to your happiness?",
-    ],
-    sad: [
-      "What is making you feel sad right now?",
-      "How can you be kind to yourself during this difficult time?",
-      "What small thing might help you feel a bit better?",
-    ],
-    anxious: [
-      "What thoughts are making you feel anxious?",
-      "What are 3 things you can control in this situation?",
-      "How can you ground yourself right now?",
-    ],
-    angry: [
-      "What triggered your anger today?",
-      "What would help you process these feelings healthily?",
-      "What boundary might you need to set?",
-    ],
-    neutral: [
-      "How would you describe your energy level today?",
-      "What could make today feel more meaningful?",
-      "What are you curious about right now?",
-    ],
-  };
+  if (!model) {
+    throw new Error("AI model not available - GEMINI_API_KEY required");
+  }
 
-  return moodPrompts[moodType] || moodPrompts.neutral;
+  const userLanguage = detectUserLanguage();
+  const prompt = `Generate 3 brief mood-reflection questions for the mood: ${moodType}. 
+Language: ${userLanguage === "vi" ? "Vietnamese (Tiếng Việt)" : "English"}
+Return JSON array of strings.`;
+  const result = await model.generateContent(prompt);
+  const text = (await result.response).text();
+  try {
+    const arr = JSON.parse(text);
+    if (Array.isArray(arr)) return arr.slice(0, 3);
+  } catch {}
+  const lines = text
+    .split("\n")
+    .map((l) => l.replace(/^[\d\-\*\.\s]+/, "").trim())
+    .filter((l) => l);
+  return lines.slice(0, 3);
 };
 
 /**
@@ -431,29 +214,7 @@ const generateMoodReflections = async (moodType) => {
 const analyzeSentiment = async (content) => {
   try {
     if (!model || !content) {
-      // Fallback analysis
-      return {
-        sentiment: {
-          score: 0.5,
-          label: "neutral",
-          confidence: 0.6,
-        },
-        mentalHealthIndicators: {
-          depressionSigns: false,
-          anxietySigns: false,
-          stressSigns: false,
-          riskLevel: "low",
-        },
-        keywords: {
-          positive: [],
-          negative: [],
-          emotional: [],
-        },
-        recommendations: [
-          "Continue journaling to track your emotional patterns.",
-        ],
-        aiPowered: false,
-      };
+      throw new Error("AI model/content missing");
     }
 
     const analysisPrompt = `Analyze this journal entry for mental health indicators and sentiment:
@@ -501,92 +262,17 @@ Respond in this exact JSON format:
       analysis.aiPowered = true;
       return analysis;
     } catch (parseError) {
-      console.warn("⚠️ AI analysis response not valid JSON, using fallback");
-
-      // Smart fallback based on keywords
-      const lowerContent = content.toLowerCase();
-      const depressionKeywords = [
-        "sad",
-        "hopeless",
-        "empty",
-        "worthless",
-        "depressed",
-        "lonely",
-      ];
-      const anxietyKeywords = [
-        "worried",
-        "anxious",
-        "panic",
-        "fear",
-        "nervous",
-        "stress",
-      ];
-      const positiveKeywords = [
-        "happy",
-        "grateful",
-        "joy",
-        "love",
-        "excited",
-        "peaceful",
-      ];
-
-      const depressionCount = depressionKeywords.filter((word) =>
-        lowerContent.includes(word)
-      ).length;
-      const anxietyCount = anxietyKeywords.filter((word) =>
-        lowerContent.includes(word)
-      ).length;
-      const positiveCount = positiveKeywords.filter((word) =>
-        lowerContent.includes(word)
-      ).length;
-
-      const totalEmotional = depressionCount + anxietyCount + positiveCount;
-      const sentimentScore =
-        totalEmotional > 0 ? positiveCount / totalEmotional : 0.5;
-
-      return {
-        sentiment: {
-          score: sentimentScore,
-          label:
-            sentimentScore > 0.6
-              ? "positive"
-              : sentimentScore < 0.4
-              ? "negative"
-              : "neutral",
-          confidence: Math.min(0.8, totalEmotional * 0.2),
-        },
-        mentalHealthIndicators: {
-          depressionSigns: depressionCount >= 2,
-          anxietySigns: anxietyCount >= 2,
-          stressSigns: anxietyCount >= 1,
-          riskLevel:
-            depressionCount + anxietyCount >= 3
-              ? "high"
-              : depressionCount + anxietyCount >= 1
-              ? "medium"
-              : "low",
-          details: `Detected ${depressionCount} depression indicators, ${anxietyCount} anxiety indicators`,
-        },
-        keywords: {
-          positive: positiveKeywords.filter((word) =>
-            lowerContent.includes(word)
-          ),
-          negative: [...depressionKeywords, ...anxietyKeywords].filter((word) =>
-            lowerContent.includes(word)
-          ),
-          emotional: [
-            ...depressionKeywords,
-            ...anxietyKeywords,
-            ...positiveKeywords,
-          ].filter((word) => lowerContent.includes(word)),
-        },
-        recommendations: generateRecommendations(
-          depressionCount,
-          anxietyCount,
-          positiveCount
-        ),
-        aiPowered: false,
-      };
+      // Minimal manual parse fallback
+      const lines = text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const jsonBlock = lines.join(" ");
+      const approx = JSON.parse(
+        jsonBlock.replace(/(\w+):/g, '"$1":').replace(/'/g, '"')
+      );
+      approx.aiPowered = true;
+      return approx;
     }
   } catch (error) {
     console.error("❌ Error in sentiment analysis:", error.message);
@@ -603,27 +289,7 @@ Respond in this exact JSON format:
 const generateImprovementPlan = async (userProfile, recentAnalyses) => {
   try {
     if (!model) {
-      // Fallback improvement plan
-      return {
-        planType: "basic_wellness",
-        title: "Basic Wellness Plan",
-        duration: "7 days",
-        activities: [
-          { day: 1, activity: "Practice 5-minute breathing meditation" },
-          { day: 2, activity: "Write about 3 things you're grateful for" },
-          { day: 3, activity: "Take a 10-minute walk outdoors" },
-          { day: 4, activity: "Connect with a friend or family member" },
-          { day: 5, activity: "Practice a hobby you enjoy" },
-          { day: 6, activity: "Reflect on your progress this week" },
-          { day: 7, activity: "Plan self-care activities for next week" },
-        ],
-        tips: [
-          "Be patient with yourself as you develop new habits",
-          "Small consistent actions lead to big changes",
-          "Celebrate your progress, no matter how small",
-        ],
-        aiPowered: false,
-      };
+      throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
     const planPrompt = `Create a personalized 7-day mental wellness improvement plan based on:
@@ -662,27 +328,16 @@ Respond in this JSON format:
       plan.aiPowered = true;
       return plan;
     } catch (parseError) {
-      console.warn("⚠️ AI plan response not valid JSON, using fallback");
-      return {
-        planType: "personalized_wellness",
-        title: "Your Wellness Journey",
-        duration: "7 days",
-        activities: [
-          { day: 1, activity: "Reflect on your emotional patterns" },
-          { day: 2, activity: "Practice mindful breathing for 5 minutes" },
-          { day: 3, activity: "Write about your strengths and achievements" },
-          { day: 4, activity: "Connect with supportive people in your life" },
-          { day: 5, activity: "Engage in a physical activity you enjoy" },
-          { day: 6, activity: "Practice gratitude journaling" },
-          { day: 7, activity: "Set intentions for the upcoming week" },
-        ],
-        tips: [
-          "Focus on progress, not perfection",
-          "Be compassionate with yourself",
-          "Small steps lead to lasting change",
-        ],
-        aiPowered: false,
-      };
+      const lines = text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const jsonBlock = lines.join(" ");
+      const approx = JSON.parse(
+        jsonBlock.replace(/(\w+):/g, '"$1":').replace(/'/g, '"')
+      );
+      approx.aiPowered = true;
+      return approx;
     }
   } catch (error) {
     console.error("❌ Error generating improvement plan:", error.message);
@@ -699,15 +354,7 @@ Respond in this JSON format:
 const getAssistantResponse = async (question, context = {}) => {
   try {
     if (!model) {
-      return {
-        response: `I hear that you're asking about "${question}". While I'm in basic mode, I'd encourage you to continue journaling about your feelings and consider speaking with a mental health professional if you need additional support.`,
-        suggestions: [
-          "Try writing about this concern in your journal",
-          "Consider talking to a trusted friend or counselor",
-          "Practice self-care and be patient with yourself",
-        ],
-        aiPowered: false,
-      };
+      throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
     const assistantPrompt = `You are a supportive mental health companion. The user asks: "${question}"
@@ -743,14 +390,14 @@ Respond in this JSON format:
       assistantResponse.aiPowered = true;
       return assistantResponse;
     } catch (parseError) {
+      const lines = text
+        .split("\n")
+        .map((l) => l.replace(/^[\d\-\*\.\s]+/, "").trim())
+        .filter((l) => l.length > 5);
       return {
-        response: `Thank you for sharing "${question}" with me. It's important to acknowledge what you're going through. Journaling can be a powerful tool for processing emotions and gaining clarity.`,
-        suggestions: [
-          "Continue writing about your thoughts and feelings",
-          "Consider speaking with a mental health professional",
-          "Practice self-compassion during difficult times",
-        ],
-        aiPowered: false,
+        response: lines[0] || "",
+        suggestions: lines.slice(1, 3),
+        aiPowered: true,
       };
     }
   } catch (error) {
@@ -964,6 +611,20 @@ const generateRecommendations = (
 };
 
 /**
+ * Detect user language preference
+ * @returns {string} 'vi' for Vietnamese, 'en' for English
+ */
+const detectUserLanguage = () => {
+  // For now, default to Vietnamese since this is a Vietnamese project
+  // In the future, this could be based on:
+  // - User's browser language
+  // - User's profile settings
+  // - User's previous journal entries language
+  // - IP geolocation
+  return "vi"; // Default to Vietnamese
+};
+
+/**
  * Check if AI service is available
  * @returns {boolean} True if AI is available
  */
@@ -980,4 +641,5 @@ module.exports = {
   getAssistantResponse,
   analyzeKeywords,
   isAIAvailable,
+  detectUserLanguage,
 };

@@ -316,6 +316,9 @@ router.post("/suggest", requireAuth, requirePremium, async function (req, res) {
  *               topic:
  *                 type: string
  *                 description: Optional topic focus (gratitude, reflection, stress)
+ *               journalId:
+ *                 type: string
+ *                 description: Optional journal ID to save suggestions to
  *     responses:
  *       200:
  *         description: AI-generated suggestions
@@ -346,10 +349,20 @@ router.post(
   enforceBasicSuggestLimit,
   async function (req, res) {
     try {
-      const { mood, topic } = req.body;
+      const { mood, topic, journalId } = req.body;
 
       // Generate AI-powered suggestions
       const suggestions = await generateWritingPrompts(mood, topic, false); // false = free user
+
+      // Save suggestions to journal if requested
+      let savedToJournal = false;
+      if (journalId) {
+        await Journal.findOneAndUpdate(
+          { _id: journalId, userId: req.user._id },
+          { suggestion: suggestions.join("\n\n") }
+        );
+        savedToJournal = true;
+      }
 
       trackBasicSuggest(req, res, function () {
         res.json({
@@ -360,6 +373,7 @@ router.post(
             mood: mood || null,
             topic: topic || null,
             remainingToday: 3, // TODO: Calculate from usage
+            savedToJournal: savedToJournal,
           },
         });
       });
