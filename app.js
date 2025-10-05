@@ -20,6 +20,7 @@ var moodRouter = require("./routes/moods");
 var planRouter = require("./routes/plans");
 var paymentRouter = require("./routes/payments");
 var notificationRouter = require("./routes/notifications");
+var adminRouter = require("./routes/admin");
 console.log("[DEBUG] SMTP_HOST:", process.env.SMTP_HOST);
 console.log("[DEBUG] SMTP_USER:", process.env.SMTP_USER);
 console.log(
@@ -94,6 +95,7 @@ app.use("/api/moods", moodRouter);
 app.use("/api/plans", planRouter);
 app.use("/api/payments", paymentRouter);
 app.use("/api/notifications", notificationRouter);
+app.use("/api/admin", adminRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

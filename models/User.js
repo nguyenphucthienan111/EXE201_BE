@@ -12,6 +12,7 @@ var userSchema = new mongoose.Schema({
   plan: { type: String, enum: ["free", "premium"], default: "free" },
   premiumExpiresAt: { type: Date },
   premiumStartedAt: { type: Date },
+  role: { type: String, enum: ["user", "admin"], default: "user" },
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -56,6 +57,38 @@ userSchema.statics.findExpiringPremiumUsers = function (daysThreshold = 7) {
     plan: "premium",
     premiumExpiresAt: { $lte: thresholdDate, $gte: new Date() },
   });
+};
+
+// Method to check if user is admin
+userSchema.methods.isAdmin = function () {
+  return this.role === "admin";
+};
+
+// Static method to get premium statistics
+userSchema.statics.getPremiumStats = async function () {
+  const totalUsers = await this.countDocuments();
+  const premiumUsers = await this.countDocuments({ plan: "premium" });
+  const activePremiumUsers = await this.countDocuments({
+    plan: "premium",
+    premiumExpiresAt: { $gt: new Date() },
+  });
+  const expiringPremiumUsers = await this.countDocuments({
+    plan: "premium",
+    premiumExpiresAt: {
+      $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      $gt: new Date(),
+    },
+  });
+
+  return {
+    totalUsers,
+    premiumUsers,
+    activePremiumUsers,
+    expiringPremiumUsers,
+    freeUsers: totalUsers - premiumUsers,
+    premiumConversionRate:
+      totalUsers > 0 ? ((premiumUsers / totalUsers) * 100).toFixed(2) : 0,
+  };
 };
 
 module.exports = mongoose.model("User", userSchema);
