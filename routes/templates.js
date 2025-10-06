@@ -1,0 +1,557 @@
+const express = require("express");
+const router = express.Router();
+const JournalTemplate = require("../models/JournalTemplate");
+const Journal = require("../models/Journal");
+const { requireAuth } = require("../middlewares/auth");
+const { requireAdminAuth } = require("../middlewares/adminAuth");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = "uploads/templates";
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(
+      null,
+      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
+    );
+  },
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Accept only image files
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed!"), false);
+    }
+  },
+});
+
+/**
+ * @openapi
+ * /api/templates:
+ *   get:
+ *     summary: "Get available journal templates (Free & Premium)"
+ *     tags: [Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Templates retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     defaultTemplates:
+ *                       type: array
+ *                     premiumTemplates:
+ *                       type: array
+ *                     userTemplates:
+ *                       type: array
+ *                     userPlan:
+ *                       type: string
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get("/", requireAuth, async (req, res) => {
+  try {
+    const user = req.user;
+
+    // Get available templates based on user plan
+    const templates = await JournalTemplate.getAvailableTemplates(
+      user.plan,
+      user.id
+    );
+
+    // Separate templates by category
+    const defaultTemplates = templates.filter((t) => t.category === "default");
+    const premiumTemplates = templates.filter((t) => t.category === "premium");
+    const userTemplates = templates.filter((t) => t.category === "user");
+
+    res.json({
+      success: true,
+      data: {
+        defaultTemplates,
+        premiumTemplates,
+        userTemplates,
+        userPlan: user.plan,
+        totalTemplates: templates.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting templates:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving templates",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/templates/upload:
+ *   post:
+ *     summary: "Upload custom template (Premium only)"
+ *     tags: [Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "My Custom Template"
+ *               description:
+ *                 type: string
+ *                 example: "A beautiful custom template"
+ *               template:
+ *                 type: string
+ *                 format: binary
+ *                 description: "Template image file"
+ *     responses:
+ *       201:
+ *         description: Template uploaded successfully
+ *       403:
+ *         description: Premium access required
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/upload",
+  requireAuth,
+  upload.single("template"),
+  async (req, res) => {
+    try {
+      // Check if user has premium
+      if (req.user.plan !== "premium") {
+        return res.status(403).json({
+          success: false,
+          message: "Premium subscription required to upload custom templates",
+        });
+      }
+
+      const { name, description } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "Template image is required",
+        });
+      }
+
+      // Create thumbnail (in real app, you'd use image processing library)
+      const thumbnailUrl = req.file.path; // Same as main image for now
+
+      const template = new JournalTemplate({
+        name,
+        description,
+        category: "user",
+        imageUrl: req.file.path,
+        thumbnailUrl: thumbnailUrl,
+        uploadedBy: req.user.id,
+        tags: ["custom", "user-uploaded"],
+      });
+
+      await template.save();
+
+      res.status(201).json({
+        success: true,
+        message: "Template uploaded successfully",
+        data: {
+          template: {
+            id: template._id,
+            name: template.name,
+            description: template.description,
+            imageUrl: template.imageUrl,
+            thumbnailUrl: template.thumbnailUrl,
+            category: template.category,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error uploading template:", error);
+
+      // Clean up uploaded file if template creation failed
+      if (req.file && req.file.path) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          console.error("Error cleaning up uploaded file:", unlinkError);
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        message: "Error uploading template",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/templates/{templateId}/use:
+ *   post:
+ *     summary: "Use template for journal entry"
+ *     tags: [Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: templateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               journalId:
+ *                 type: string
+ *                 description: "Journal ID to apply template to"
+ *     responses:
+ *       200:
+ *         description: Template applied successfully
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Template or journal not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/:templateId/use", requireAuth, async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    const { journalId } = req.body;
+
+    // Check if template exists and user has access
+    const template = await JournalTemplate.findById(templateId);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found",
+      });
+    }
+
+    // Check access permissions
+    if (template.category === "premium" && req.user.plan !== "premium") {
+      return res.status(403).json({
+        success: false,
+        message: "Premium subscription required for this template",
+      });
+    }
+
+    if (
+      template.category === "user" &&
+      template.uploadedBy.toString() !== req.user.id
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only use your own custom templates",
+      });
+    }
+
+    // Apply template to journal
+    const journal = await Journal.findOneAndUpdate(
+      { _id: journalId, userId: req.user.id },
+      {
+        templateId: template._id,
+        templateName: template.name,
+      },
+      { new: true }
+    );
+
+    if (!journal) {
+      return res.status(404).json({
+        success: false,
+        message: "Journal not found",
+      });
+    }
+
+    // Increment template usage
+    await JournalTemplate.incrementUsage(templateId);
+
+    res.json({
+      success: true,
+      message: "Template applied successfully",
+      data: {
+        journal: {
+          id: journal._id,
+          title: journal.title,
+          templateId: journal.templateId,
+          templateName: journal.templateName,
+        },
+        template: {
+          id: template._id,
+          name: template.name,
+          imageUrl: template.imageUrl,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error using template:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error applying template",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/templates/{templateId}:
+ *   delete:
+ *     summary: "Delete user's custom template"
+ *     tags: [Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: templateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Template deleted successfully
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Server error
+ */
+router.delete("/:templateId", requireAuth, async (req, res) => {
+  try {
+    const { templateId } = req.params;
+
+    const template = await JournalTemplate.findById(templateId);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found",
+      });
+    }
+
+    // Only allow users to delete their own templates
+    if (
+      template.category !== "user" ||
+      template.uploadedBy.toString() !== req.user.id
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only delete your own custom templates",
+      });
+    }
+
+    // Delete template file from filesystem
+    try {
+      if (template.imageUrl && fs.existsSync(template.imageUrl)) {
+        fs.unlinkSync(template.imageUrl);
+      }
+    } catch (fileError) {
+      console.error("Error deleting template file:", fileError);
+    }
+
+    await JournalTemplate.findByIdAndDelete(templateId);
+
+    res.json({
+      success: true,
+      message: "Template deleted successfully",
+      data: {
+        deletedTemplate: {
+          id: template._id,
+          name: template.name,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting template:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting template",
+      error: error.message,
+    });
+  }
+});
+
+// Admin routes for template management
+/**
+ * @openapi
+ * /api/templates/admin:
+ *   post:
+ *     summary: "Upload admin template (Admin only)"
+ *     tags: [Admin Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Premium Floral Template"
+ *               description:
+ *                 type: string
+ *                 example: "Beautiful floral design"
+ *               category:
+ *                 type: string
+ *                 enum: [default, premium]
+ *                 example: "premium"
+ *               template:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: Admin template uploaded successfully
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/admin",
+  requireAdminAuth,
+  upload.single("template"),
+  async (req, res) => {
+    try {
+      const { name, description, category } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "Template image is required",
+        });
+      }
+
+      if (!["default", "premium"].includes(category)) {
+        return res.status(400).json({
+          success: false,
+          message: "Category must be 'default' or 'premium'",
+        });
+      }
+
+      const template = new JournalTemplate({
+        name,
+        description,
+        category,
+        imageUrl: req.file.path,
+        thumbnailUrl: req.file.path, // Same as main image for now
+        uploadedBy: null, // Admin uploaded
+        tags: ["admin-uploaded", category],
+      });
+
+      await template.save();
+
+      res.status(201).json({
+        success: true,
+        message: "Admin template uploaded successfully",
+        data: {
+          template: {
+            id: template._id,
+            name: template.name,
+            description: template.description,
+            category: template.category,
+            imageUrl: template.imageUrl,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error uploading admin template:", error);
+
+      // Clean up uploaded file if template creation failed
+      if (req.file && req.file.path) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          console.error("Error cleaning up uploaded file:", unlinkError);
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        message: "Error uploading admin template",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/templates/admin:
+ *   get:
+ *     summary: "Get all templates (Admin only)"
+ *     tags: [Admin Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: All templates retrieved successfully
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get("/admin", requireAdminAuth, async (req, res) => {
+  try {
+    const templates = await JournalTemplate.find({})
+      .populate("uploadedBy", "name email")
+      .sort({ category: 1, createdAt: -1 });
+
+    const stats = {
+      total: templates.length,
+      default: templates.filter((t) => t.category === "default").length,
+      premium: templates.filter((t) => t.category === "premium").length,
+      user: templates.filter((t) => t.category === "user").length,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        templates,
+        statistics: stats,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting admin templates:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving templates",
+      error: error.message,
+    });
+  }
+});
+
+module.exports = router;
+
+

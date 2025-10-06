@@ -1,6 +1,7 @@
 var express = require("express");
 var router = express.Router();
 var Journal = require("../models/Journal");
+var JournalTemplate = require("../models/JournalTemplate");
 var { requireAuth, requirePremium } = require("../middlewares/auth");
 var {
   enforceJournalCreateLimit,
@@ -40,8 +41,16 @@ var {
  *                 example: "My reflection today"
  *               content:
  *                 type: string
- *                 description: Journal entry content
+ *                 description: Journal entry content (plain text)
  *                 example: "Today was challenging but I learned a lot about myself..."
+ *               richContent:
+ *                 type: string
+ *                 description: Rich text content (HTML)
+ *                 example: "<p>Today was <strong>challenging</strong> but I learned a lot about myself...</p>"
+ *               templateId:
+ *                 type: string
+ *                 description: Template ID to use for this journal
+ *                 example: "60f7b3b3b3b3b3b3b3b3b3b3"
  *               mood:
  *                 type: string
  *                 description: Current mood
@@ -95,19 +104,77 @@ var {
  *       500:
  *         description: Server error
  */
-router.post("/", requireAuth, enforceJournalCreateLimit, function (req, res) {
-  var data = Object.assign({}, req.body, { userId: req.user._id });
-  new Journal(data)
-    .save()
-    .then(function (doc) {
+router.post(
+  "/",
+  requireAuth,
+  enforceJournalCreateLimit,
+  async function (req, res) {
+    try {
+      const { templateId, richContent, ...otherData } = req.body;
+
+      // Validate template access if templateId is provided
+      if (templateId) {
+        const template = await JournalTemplate.findById(templateId);
+        if (!template) {
+          return res.status(404).json({
+            success: false,
+            message: "Template not found",
+          });
+        }
+
+        // Check template access permissions
+        if (template.category === "premium" && req.user.plan !== "premium") {
+          return res.status(403).json({
+            success: false,
+            message: "Premium subscription required for this template",
+          });
+        }
+
+        if (
+          template.category === "user" &&
+          template.uploadedBy.toString() !== req.user.id
+        ) {
+          return res.status(403).json({
+            success: false,
+            message: "You can only use your own custom templates",
+          });
+        }
+
+        // Increment template usage
+        await JournalTemplate.incrementUsage(templateId);
+      }
+
+      const data = {
+        ...otherData,
+        userId: req.user._id,
+        templateId: templateId || null,
+        templateName: templateId
+          ? (await JournalTemplate.findById(templateId))?.name
+          : "Default",
+        richContent: richContent || "",
+        // Keep plain text content for backward compatibility
+        content: otherData.content || "",
+      };
+
+      const journal = new Journal(data);
+      await journal.save();
+
       trackJournalCreate(req, res, function () {
-        res.status(201).json(doc);
+        res.status(201).json({
+          success: true,
+          data: journal,
+        });
       });
-    })
-    .catch(function (err) {
-      res.status(500).json({ message: err.message });
-    });
-});
+    } catch (error) {
+      console.error("Error creating journal:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error creating journal entry",
+        error: error.message,
+      });
+    }
+  }
+);
 
 /**
  * @openapi
@@ -1101,6 +1168,308 @@ router.get("/usage", requireAuth, async function (req, res) {
     res.status(500).json({
       success: false,
       message: "Error getting usage",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/journals/{id}/print:
+ *   post:
+ *     summary: "Generate print-ready journal entry"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               paperSize:
+ *                 type: string
+ *                 enum: [A4, A5, Letter, Legal]
+ *                 default: A4
+ *               printQuality:
+ *                 type: string
+ *                 enum: [Draft, Standard, High Quality]
+ *                 default: Standard
+ *               colorOptions:
+ *                 type: string
+ *                 enum: [Color, Black and White]
+ *                 default: Color
+ *               copies:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 default: 1
+ *     responses:
+ *       200:
+ *         description: Print data generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     printData:
+ *                       type: object
+ *                     settings:
+ *                       type: object
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Journal not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/:id/print", requireAuth, async function (req, res) {
+  try {
+    const { id } = req.params;
+    const {
+      paperSize = "A4",
+      printQuality = "Standard",
+      colorOptions = "Color",
+      copies = 1,
+    } = req.body;
+
+    // Find journal entry
+    const journal = await Journal.findOne({ _id: id, userId: req.user._id });
+    if (!journal) {
+      return res.status(404).json({
+        success: false,
+        message: "Journal entry not found",
+      });
+    }
+
+    // Update print settings
+    journal.printSettings = {
+      paperSize,
+      printQuality,
+      colorOptions,
+      copies,
+    };
+    await journal.save();
+
+    // Get template info if available
+    let templateInfo = null;
+    if (journal.templateId) {
+      const template = await JournalTemplate.findById(journal.templateId);
+      templateInfo = template
+        ? {
+            id: template._id,
+            name: template.name,
+            imageUrl: template.imageUrl,
+          }
+        : null;
+    }
+
+    // Generate print-ready data
+    const printData = {
+      journal: {
+        id: journal._id,
+        title: journal.title,
+        content: journal.content,
+        richContent: journal.richContent,
+        mood: journal.mood,
+        tags: journal.tags,
+        createdAt: journal.createdAt,
+        templateName: journal.templateName,
+      },
+      template: templateInfo,
+      settings: {
+        paperSize,
+        printQuality,
+        colorOptions,
+        copies,
+        printDate: new Date(),
+        user: {
+          name: req.user.name,
+          email: req.user.email,
+        },
+      },
+      metadata: {
+        generatedAt: new Date(),
+        appVersion: "1.0.0",
+        pageCount: Math.ceil(
+          (journal.richContent || journal.content || "").length / 2000
+        ), // Rough estimate
+      },
+    };
+
+    res.json({
+      success: true,
+      message: "Print data generated successfully",
+      data: {
+        printData,
+        settings: journal.printSettings,
+        downloadUrl: `/api/journals/${id}/print/download`, // Frontend can use this for PDF generation
+      },
+    });
+  } catch (error) {
+    console.error("Error generating print data:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error generating print data",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/journals/{id}/print/download:
+ *   get:
+ *     summary: "Download print-ready PDF (simplified version)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: PDF generated successfully
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Journal not found
+ *       500:
+ *         description: Server error
+ */
+router.get("/:id/print/download", requireAuth, async function (req, res) {
+  try {
+    const { id } = req.params;
+
+    // Find journal entry
+    const journal = await Journal.findOne({ _id: id, userId: req.user._id });
+    if (!journal) {
+      return res.status(404).json({
+        success: false,
+        message: "Journal entry not found",
+      });
+    }
+
+    // For now, return HTML that can be printed
+    // In production, you'd use a library like Puppeteer or jsPDF to generate actual PDF
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>${journal.title || "Journal Entry"} - Everquill</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #E0BBE4;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .title {
+            color: #6B46C1;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .date {
+            color: #666;
+            font-size: 14px;
+        }
+        .content {
+            margin-bottom: 30px;
+        }
+        .mood-tags {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .mood, .tags {
+            background: #F3F4F6;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            border-top: 1px solid #E0BBE4;
+            padding-top: 20px;
+        }
+        @media print {
+            body { margin: 0; }
+            .header { page-break-after: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">${journal.title || "Untitled Entry"}</h1>
+        <div class="date">${new Date(
+          journal.createdAt
+        ).toLocaleDateString()}</div>
+    </div>
+    
+    <div class="mood-tags">
+        ${
+          journal.mood
+            ? `<div class="mood"><strong>Mood:</strong> ${journal.mood}</div>`
+            : ""
+        }
+        ${
+          journal.tags && journal.tags.length > 0
+            ? `<div class="tags"><strong>Tags:</strong> ${journal.tags.join(
+                ", "
+              )}</div>`
+            : ""
+        }
+    </div>
+    
+    <div class="content">
+        ${journal.richContent || journal.content || ""}
+    </div>
+    
+    <div class="footer">
+        <p>Generated by Everquill - ${new Date().toLocaleDateString()}</p>
+        <p>Template: ${journal.templateName}</p>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader("Content-Type", "text/html");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="journal-${journal._id}.html"`
+    );
+    res.send(html);
+  } catch (error) {
+    console.error("Error generating print download:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error generating print download",
       error: error.message,
     });
   }

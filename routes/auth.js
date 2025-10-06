@@ -190,54 +190,6 @@ router.post(
   }
 );
 
-/** Google OAuth */
-/**
- * @openapi
- * /api/auth/google:
- *   get:
- *     summary: Google OAuth login
- *     tags: [Auth]
- *     responses:
- *       302: { description: Redirect to Google }
- */
-router.get(
-  "/google",
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-    session: false,
-  })
-);
-router.get(
-  "/google/callback",
-  passport.authenticate("google", { session: false, failureRedirect: "/" }),
-  function (req, res) {
-    var token = jwt.sign(
-      { sub: req.user._id },
-      process.env.JWT_SECRET || "secret",
-      { expiresIn: "7d" }
-    );
-    // Save refresh token
-    var refresh = uuidv4();
-    User.findByIdAndUpdate(req.user._id, { refreshToken: refresh })
-      .then(function () {
-        var redirectUrl =
-          (process.env.CLIENT_URL || "http://localhost:5173") +
-          "/oauth-success?token=" +
-          token +
-          "&refresh=" +
-          refresh;
-        res.redirect(redirectUrl);
-      })
-      .catch(function () {
-        var redirectUrl =
-          (process.env.CLIENT_URL || "http://localhost:5173") +
-          "/oauth-success?token=" +
-          token;
-        res.redirect(redirectUrl);
-      });
-  }
-);
-
 /**
  * @openapi
  * /api/auth/refresh:

@@ -296,7 +296,7 @@ router.get("/users", requireAdminAuth, async (req, res) => {
  * @openapi
  * /api/admin/users/{userId}/toggle-role:
  *   patch:
- *     summary: "Toggle user role between user and admin"
+ *     summary: "Toggle user role between user and admin (chỉ dùng để test)"
  *     tags: [Admin]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -388,7 +388,7 @@ router.patch(
  * @openapi
  * /api/admin/users/{userId}/toggle-premium:
  *   patch:
- *     summary: "Toggle user premium status"
+ *     summary: "Toggle user premium status (chỉ dùng để test)"
  *     tags: [Admin]
  *     security: [{ bearerAuth: [] }]
  *     parameters:
@@ -522,6 +522,185 @@ router.patch(
  *       500:
  *         description: Server error
  */
+/**
+ * @openapi
+ * /api/admin/revenue:
+ *   get:
+ *     summary: "Revenue Analytics - Detailed financial overview"
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *           enum: [daily, weekly, monthly, yearly]
+ *           default: monthly
+ *     responses:
+ *       200:
+ *         description: Revenue analytics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     summary:
+ *                       type: object
+ *                     trends:
+ *                       type: array
+ *                     topPlans:
+ *                       type: array
+ *                     conversionMetrics:
+ *                       type: object
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get("/revenue", requireAdminAuth, async (req, res) => {
+  try {
+    const period = req.query.period || "monthly";
+
+    // Calculate date ranges
+    const now = new Date();
+    let startDate, groupFormat;
+
+    switch (period) {
+      case "daily":
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
+        groupFormat = "%Y-%m-%d";
+        break;
+      case "weekly":
+        startDate = new Date(now.getTime() - 12 * 7 * 24 * 60 * 60 * 1000); // Last 12 weeks
+        groupFormat = "%Y-%U";
+        break;
+      case "monthly":
+        startDate = new Date(now.getTime() - 12 * 30 * 24 * 60 * 60 * 1000); // Last 12 months
+        groupFormat = "%Y-%m";
+        break;
+      case "yearly":
+        startDate = new Date(now.getTime() - 5 * 365 * 24 * 60 * 60 * 1000); // Last 5 years
+        groupFormat = "%Y";
+        break;
+    }
+
+    // Revenue summary
+    const totalRevenue = await Payment.aggregate([
+      { $match: { status: "success", paymentType: "premium_subscription" } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+
+    const currentPeriodRevenue = await Payment.aggregate([
+      {
+        $match: {
+          status: "success",
+          paymentType: "premium_subscription",
+          paidAt: { $gte: startDate },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+
+    // Revenue trends
+    const trends = await Payment.aggregate([
+      {
+        $match: {
+          status: "success",
+          paymentType: "premium_subscription",
+          paidAt: { $gte: startDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: groupFormat, date: "$paidAt" },
+          },
+          revenue: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Top performing plans/packages
+    const topPlans = await Payment.aggregate([
+      {
+        $match: {
+          status: "success",
+          paymentType: "premium_subscription",
+        },
+      },
+      {
+        $group: {
+          _id: "$amount",
+          count: { $sum: 1 },
+          revenue: { $sum: "$amount" },
+        },
+      },
+      { $sort: { revenue: -1 } },
+      { $limit: 5 },
+    ]);
+
+    // Conversion metrics
+    const totalUsers = await User.countDocuments();
+    const premiumUsers = await User.countDocuments({ plan: "premium" });
+    const successfulPayments = await Payment.countDocuments({
+      status: "success",
+      paymentType: "premium_subscription",
+    });
+
+    const avgRevenuePerUser =
+      premiumUsers > 0 ? (totalRevenue[0]?.total || 0) / premiumUsers : 0;
+    const avgRevenuePerPayment =
+      successfulPayments > 0
+        ? (totalRevenue[0]?.total || 0) / successfulPayments
+        : 0;
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalRevenue: totalRevenue[0]?.total || 0,
+          currentPeriodRevenue: currentPeriodRevenue[0]?.total || 0,
+          totalTransactions: successfulPayments,
+          averageTransactionValue: avgRevenuePerPayment,
+          averageRevenuePerUser: avgRevenuePerUser,
+        },
+        trends,
+        topPlans,
+        conversionMetrics: {
+          totalUsers,
+          premiumUsers,
+          conversionRate:
+            totalUsers > 0 ? ((premiumUsers / totalUsers) * 100).toFixed(2) : 0,
+          successfulPayments,
+          paymentSuccessRate:
+            premiumUsers > 0
+              ? ((successfulPayments / premiumUsers) * 100).toFixed(2)
+              : 0,
+        },
+        period,
+        dateRange: {
+          start: startDate,
+          end: now,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error getting revenue analytics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving revenue analytics",
+      error: error.message,
+    });
+  }
+});
+
 router.get("/payments", requireAdminAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -564,6 +743,105 @@ router.get("/payments", requireAdminAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error retrieving payments",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/system/health:
+ *   get:
+ *     summary: "System Health Check - Monitor system status"
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: System health status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     database:
+ *                       type: object
+ *                     ai:
+ *                       type: object
+ *                     memory:
+ *                       type: object
+ *                     uptime:
+ *                       type: number
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get("/system/health", requireAdminAuth, async (req, res) => {
+  try {
+    const mongoose = require("mongoose");
+    const { isAIAvailable } = require("../utils/aiService");
+
+    // Database health
+    const dbState = mongoose.connection.readyState;
+    const dbStates = {
+      0: "disconnected",
+      1: "connected",
+      2: "connecting",
+      3: "disconnecting",
+    };
+
+    // Memory usage
+    const memUsage = process.memoryUsage();
+    const memUsageMB = {
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+    };
+
+    // AI service status
+    const aiStatus = isAIAvailable();
+
+    // System uptime
+    const uptime = Math.round(process.uptime());
+
+    res.json({
+      success: true,
+      data: {
+        database: {
+          status: dbStates[dbState],
+          connected: dbState === 1,
+          collections: Object.keys(mongoose.connection.collections).length,
+        },
+        ai: {
+          available: aiStatus,
+          service: "Google Gemini API",
+        },
+        memory: {
+          ...memUsageMB,
+          heapUsagePercent: Math.round(
+            (memUsage.heapUsed / memUsage.heapTotal) * 100
+          ),
+        },
+        uptime: {
+          seconds: uptime,
+          formatted: `${Math.floor(uptime / 3600)}h ${Math.floor(
+            (uptime % 3600) / 60
+          )}m ${uptime % 60}s`,
+        },
+        timestamp: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error("Error checking system health:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error checking system health",
       error: error.message,
     });
   }
