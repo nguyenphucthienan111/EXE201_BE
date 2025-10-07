@@ -3,10 +3,7 @@
   "builds": [
     {
       "src": "./bin/www",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["**"]
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -22,5 +19,6 @@
     "bin/www": {
       "maxDuration": 30
     }
-  }
+  },
+  "installCommand": "npm install --legacy-peer-deps"
 }

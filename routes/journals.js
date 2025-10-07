@@ -1768,6 +1768,17 @@ router.get("/:id/print/download", requireAuth, async function (req, res) {
       return res.send(html);
     }
 
+    // Skip PDF generation on Vercel (serverless environment)
+    if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+      console.log("[PRINT] Running in serverless environment, returning HTML");
+      res.setHeader("Content-Type", "text/html");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="journal-${journal._id}.html"`
+      );
+      return res.send(html);
+    }
+
     // Default: generate PDF via Puppeteer (fallback to HTML if module missing)
     let puppeteer;
     try {
