@@ -179,6 +179,7 @@ router.post(
                 id: user._id,
                 email: user.email,
                 plan: user.plan,
+                role: user.role,
                 name: user.name,
               },
             });

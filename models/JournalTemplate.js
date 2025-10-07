@@ -95,3 +95,4 @@ journalTemplateSchema.statics.incrementUsage = function (templateId) {
 module.exports = mongoose.model("JournalTemplate", journalTemplateSchema);
 
 
+

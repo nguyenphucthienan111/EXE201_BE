@@ -257,23 +257,32 @@ Respond in this exact JSON format:
     const response = await result.response;
     const text = response.text();
 
-    try {
-      const analysis = JSON.parse(text);
-      analysis.aiPowered = true;
-      return analysis;
-    } catch (parseError) {
-      // Minimal manual parse fallback
-      const lines = text
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean);
-      const jsonBlock = lines.join(" ");
-      const approx = JSON.parse(
-        jsonBlock.replace(/(\w+):/g, '"$1":').replace(/'/g, '"')
-      );
-      approx.aiPowered = true;
-      return approx;
-    }
+    // Reuse robust extractor (duplicate here to avoid import cycles)
+    const extractJson = (raw) => {
+      try {
+        return JSON.parse(raw);
+      } catch (_) {}
+      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenceMatch && fenceMatch[1]) {
+        const inside = fenceMatch[1].trim();
+        try {
+          return JSON.parse(inside);
+        } catch (_) {}
+      }
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first !== -1 && last !== -1 && last > first) {
+        const slice = raw.substring(first, last + 1);
+        try {
+          return JSON.parse(slice);
+        } catch (_) {}
+      }
+      throw new Error("AI did not return valid JSON");
+    };
+
+    const analysis = extractJson(text);
+    analysis.aiPowered = true;
+    return analysis;
   } catch (error) {
     console.error("❌ Error in sentiment analysis:", error.message);
     throw error;
@@ -304,7 +313,7 @@ Create a supportive, evidence-based plan with:
 3. 3-5 practical tips
 4. Motivational title
 
-Respond in this JSON format:
+Respond ONLY with a single valid JSON object. Do not include any prose, introductions, explanations, or code fences. JSON must strictly match this schema:
 {
   "planType": "emotional_release",
   "title": "Your Personal Emotional Release Journey",
@@ -323,22 +332,35 @@ Respond in this JSON format:
     const response = await result.response;
     const text = response.text();
 
-    try {
-      const plan = JSON.parse(text);
-      plan.aiPowered = true;
-      return plan;
-    } catch (parseError) {
-      const lines = text
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean);
-      const jsonBlock = lines.join(" ");
-      const approx = JSON.parse(
-        jsonBlock.replace(/(\w+):/g, '"$1":').replace(/'/g, '"')
-      );
-      approx.aiPowered = true;
-      return approx;
-    }
+    // Robust JSON extraction
+    const extractJson = (raw) => {
+      // Direct parse
+      try {
+        return JSON.parse(raw);
+      } catch (_) {}
+      // Fenced code block ```json ... ``` or ``` ... ```
+      const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenceMatch && fenceMatch[1]) {
+        const inside = fenceMatch[1].trim();
+        try {
+          return JSON.parse(inside);
+        } catch (_) {}
+      }
+      // Heuristic: extract first { ... last }
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first !== -1 && last !== -1 && last > first) {
+        const slice = raw.substring(first, last + 1);
+        try {
+          return JSON.parse(slice);
+        } catch (_) {}
+      }
+      throw new Error("AI did not return valid JSON");
+    };
+
+    const plan = extractJson(text);
+    plan.aiPowered = true;
+    return plan;
   } catch (error) {
     console.error("❌ Error generating improvement plan:", error.message);
     throw error;

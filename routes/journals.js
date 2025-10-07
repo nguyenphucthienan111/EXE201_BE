@@ -238,6 +238,263 @@ router.get("/", requireAuth, function (req, res) {
     });
 });
 
+/**
+ * @openapi
+ * /api/journals/usage:
+ *   get:
+ *     summary: "Daily usage tracking (Free & Premium: monitor limits)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Current usage statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     plan:
+ *                       type: string
+ *                     dailyLimits:
+ *                       type: object
+ *                     usage:
+ *                       type: object
+ *                     remaining:
+ *                       type: object
+ */
+router.get("/usage", requireAuth, async function (req, res) {
+  try {
+    const User = require("../models/User");
+    const Usage = require("../models/Usage");
+    const dayjs = require("dayjs");
+
+    const user = await User.findById(req.user._id);
+    const today = dayjs().format("YYYY-MM-DD");
+    const usage = (await Usage.findOne({
+      userId: req.user._id,
+      date: today,
+    })) || {
+      createdJournals: 0,
+      basicSuggestionsUsed: 0,
+    };
+
+    const limits =
+      user.plan === "premium"
+        ? { journals: "unlimited", suggestions: "unlimited" }
+        : { journals: 2, suggestions: 3 };
+
+    const remaining =
+      user.plan === "premium"
+        ? { journals: "unlimited", suggestions: "unlimited" }
+        : {
+            journals: Math.max(
+              0,
+              limits.journals - (usage.createdJournals || 0)
+            ),
+            suggestions: Math.max(
+              0,
+              limits.suggestions - (usage.basicSuggestionsUsed || 0)
+            ),
+          };
+
+    res.json({
+      success: true,
+      data: {
+        plan: user.plan,
+        dailyLimits: limits,
+        usage: {
+          journals: usage.createdJournals || 0,
+          suggestions: usage.basicSuggestionsUsed || 0,
+        },
+        remaining: remaining,
+        date: today,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting usage:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error getting usage",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/journals/dashboard:
+ *   get:
+ *     summary: "Analytics dashboard with charts & insights (Premium only)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *           enum: [week, month, quarter, year]
+ *           default: month
+ *         description: Time period for analysis
+ *     responses:
+ *       200:
+ *         description: Comprehensive dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     period:
+ *                       type: string
+ *                     journalStats:
+ *                       type: object
+ *                     moodTrends:
+ *                       type: object
+ *                     keywordAnalysis:
+ *                       type: object
+ *                     sentimentTrends:
+ *                       type: array
+ *                     mentalHealthInsights:
+ *                       type: object
+ */
+router.get(
+  "/dashboard",
+  requireAuth,
+  requirePremium,
+  async function (req, res) {
+    try {
+      const { period = "month" } = req.query;
+      const dayjs = require("dayjs");
+      const Mood = require("../models/Mood");
+
+      // Calculate date range based on period
+      let startDate;
+      switch (period) {
+        case "week":
+          startDate = dayjs().subtract(7, "day").format("YYYY-MM-DD");
+          break;
+        case "quarter":
+          startDate = dayjs().subtract(3, "month").format("YYYY-MM-DD");
+          break;
+        case "year":
+          startDate = dayjs().subtract(1, "year").format("YYYY-MM-DD");
+          break;
+        default: // month
+          startDate = dayjs().subtract(1, "month").format("YYYY-MM-DD");
+      }
+
+      // Get journal entries for period
+      const journals = await Journal.find({
+        userId: req.user._id,
+        createdAt: { $gte: new Date(startDate) },
+      }).sort({ createdAt: 1 });
+
+      // Get mood entries for period
+      const moods = await Mood.find({
+        userId: req.user._id,
+        date: { $gte: startDate },
+      }).sort({ date: 1 });
+
+      // Calculate journal statistics
+      const journalStats = {
+        totalEntries: journals.length,
+        averageWordsPerEntry:
+          journals.length > 0
+            ? Math.round(
+                journals.reduce(
+                  (sum, j) => sum + (j.content?.split(" ").length || 0),
+                  0
+                ) / journals.length
+              )
+            : 0,
+        writingFrequency: calculateWritingFrequency(journals, period),
+        topTags: getTopTags(journals),
+      };
+
+      // Calculate mood trends
+      const moodTrends = {
+        averageScore:
+          moods.length > 0
+            ? (
+                moods.reduce((sum, m) => sum + (m.score || 0), 0) / moods.length
+              ).toFixed(1)
+            : 0,
+        averageStress:
+          moods.length > 0
+            ? (
+                moods.reduce((sum, m) => sum + (m.stress || 0), 0) /
+                moods.length
+              ).toFixed(1)
+            : 0,
+        averageAnxiety:
+          moods.length > 0
+            ? (
+                moods.reduce((sum, m) => sum + (m.anxiety || 0), 0) /
+                moods.length
+              ).toFixed(1)
+            : 0,
+        averageEnergy:
+          moods.length > 0
+            ? (
+                moods.reduce((sum, m) => sum + (m.energy || 0), 0) /
+                moods.length
+              ).toFixed(1)
+            : 0,
+        trendDirection: calculateTrendDirection(moods),
+        chartData: moods.map((m) => ({
+          date: m.date,
+          score: m.score,
+          stress: m.stress,
+          anxiety: m.anxiety,
+          energy: m.energy,
+        })),
+      };
+
+      // Keyword analysis
+      const keywordAnalysis = analyzeKeywords(journals);
+
+      // Generate mental health insights
+      const mentalHealthInsights = {
+        overallWellbeing: calculateOverallWellbeing(
+          moodTrends,
+          keywordAnalysis
+        ),
+        riskFactors: identifyRiskFactors(journals, moods),
+        progressNotes: generateProgressNotes(journalStats, moodTrends),
+        recommendations: keywordAnalysis.insights,
+      };
+
+      res.json({
+        success: true,
+        data: {
+          period: period,
+          dateRange: { start: startDate, end: dayjs().format("YYYY-MM-DD") },
+          journalStats,
+          moodTrends,
+          keywordAnalysis,
+          mentalHealthInsights,
+        },
+      });
+    } catch (error) {
+      console.error("Error generating dashboard:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error generating dashboard",
+        error: error.message,
+      });
+    }
+  }
+);
+
 // Get one
 router.get("/:id", requireAuth, function (req, res) {
   Journal.findOne({ _id: req.params.id, userId: req.user._id })
@@ -251,6 +508,41 @@ router.get("/:id", requireAuth, function (req, res) {
 });
 
 // Update
+/**
+ * @openapi
+ * /api/journals/{id}:
+ *   put:
+ *     summary: "Update journal entry (Free & Premium)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title: { type: string }
+ *               content: { type: string }
+ *               richContent: { type: string, description: "HTML content" }
+ *               templateId: { type: string }
+ *               mood: { type: string }
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Updated entry (ownership enforced)
+ *       404:
+ *         description: Not found or not owned by user
+ */
 router.put("/:id", requireAuth, function (req, res) {
   Journal.findOneAndUpdate(
     { _id: req.params.id, userId: req.user._id },
@@ -267,6 +559,25 @@ router.put("/:id", requireAuth, function (req, res) {
 });
 
 // Delete
+/**
+ * @openapi
+ * /api/journals/{id}:
+ *   delete:
+ *     summary: "Delete journal entry (Free & Premium)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Deleted successfully
+ *       404:
+ *         description: Not found or not owned by user
+ */
 router.delete("/:id", requireAuth, function (req, res) {
   Journal.deleteOne({ _id: req.params.id, userId: req.user._id })
     .then(function () {
@@ -1358,6 +1669,7 @@ router.post("/:id/print", requireAuth, async function (req, res) {
 router.get("/:id/print/download", requireAuth, async function (req, res) {
   try {
     const { id } = req.params;
+    const format = (req.query.format || "pdf").toLowerCase(); // pdf | html
 
     // Find journal entry
     const journal = await Journal.findOne({ _id: id, userId: req.user._id });
@@ -1368,8 +1680,27 @@ router.get("/:id/print/download", requireAuth, async function (req, res) {
       });
     }
 
-    // For now, return HTML that can be printed
-    // In production, you'd use a library like Puppeteer or jsPDF to generate actual PDF
+    // Build background CSS/IMG if template has image
+    let backgroundImageCss = "";
+    let backgroundImageTag = "";
+    try {
+      if (journal.templateId) {
+        const t = await JournalTemplate.findById(journal.templateId);
+        if (t && t.imageUrl) {
+          const baseUrl = `${req.protocol}://${req.get("host")}`;
+          const normalized = String(t.imageUrl).replace(/\\\\/g, "/");
+          const absoluteUrl = normalized.startsWith("http")
+            ? normalized
+            : `${baseUrl}/${normalized}`;
+          backgroundImageCss = `
+            .bg { position: fixed; inset: 0; z-index: 0; }
+            .bg-img { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+          `;
+          backgroundImageTag = `<img class=\"bg-img\" src=\"${absoluteUrl}\" alt=\"template background\"/>`;
+        }
+      }
+    } catch (_) {}
+
     const html = `
 <!DOCTYPE html>
 <html>
@@ -1377,94 +1708,103 @@ router.get("/:id/print/download", requireAuth, async function (req, res) {
     <meta charset="UTF-8">
     <title>${journal.title || "Journal Entry"} - Everquill</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-        }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #E0BBE4;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        .title {
-            color: #6B46C1;
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-        .date {
-            color: #666;
-            font-size: 14px;
-        }
-        .content {
-            margin-bottom: 30px;
-        }
-        .mood-tags {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .mood, .tags {
-            background: #F3F4F6;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .footer {
-            text-align: center;
-            color: #666;
-            font-size: 12px;
-            border-top: 1px solid #E0BBE4;
-            padding-top: 20px;
-        }
-        @media print {
-            body { margin: 0; }
-            .header { page-break-after: avoid; }
-        }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; line-height: 1.6; background: transparent; }
+        .bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
+        .page { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; padding: 20px; background: rgba(255,255,255,0.85); }
+        .header { text-align: center; border-bottom: 2px solid #E0BBE4; padding-bottom: 20px; margin-bottom: 30px; }
+        .title { color: #6B46C1; font-size: 24px; margin-bottom: 10px; }
+        .date { color: #666; font-size: 14px; }
+        .content { margin-bottom: 30px; }
+        .mood-tags { display: flex; gap: 20px; margin-bottom: 20px; }
+        .mood, .tags { background: #F3F4F6; padding: 10px; border-radius: 5px; }
+        .footer { text-align: center; color: #666; font-size: 12px; border-top: 1px solid #E0BBE4; padding-top: 20px; }
+        @media print { body { margin: 0; } .header { page-break-after: avoid; } }
+        ${backgroundImageCss}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1 class="title">${journal.title || "Untitled Entry"}</h1>
-        <div class="date">${new Date(
+    ${backgroundImageCss ? '<div class="bg"></div>' : ""}
+    ${backgroundImageTag}
+    <div class=\"page\" style=\"max-width:720px;margin:32px auto;padding:32px;background:rgba(255,255,255,0.96);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);\">
+    <div class=\"header\" style=\"text-align:center;border-bottom:2px solid #E0BBE4;padding-bottom:16px;margin-bottom:24px;\"> 
+        <h1 class=\"title\" style=\"color:#6B46C1;font-size:26px;margin-bottom:8px;\">${
+          journal.title || "Untitled Entry"
+        }</h1>
+        <div class=\"date\" style=\"color:#666;font-size:13px;\">${new Date(
           journal.createdAt
         ).toLocaleDateString()}</div>
     </div>
-    
-    <div class="mood-tags">
+    <div class=\"mood-tags\" style=\"display:flex;gap:16px;margin-bottom:16px;\">
         ${
           journal.mood
-            ? `<div class="mood"><strong>Mood:</strong> ${journal.mood}</div>`
+            ? `<div class=\"mood\" style=\"background:#F3F4F6;padding:10px 12px;border-radius:8px;\"><strong>Mood:</strong> ${journal.mood}</div>`
             : ""
         }
         ${
           journal.tags && journal.tags.length > 0
-            ? `<div class="tags"><strong>Tags:</strong> ${journal.tags.join(
+            ? `<div class=\"tags\" style=\"background:#F3F4F6;padding:10px 12px;border-radius:8px;\"><strong>Tags:</strong> ${journal.tags.join(
                 ", "
               )}</div>`
             : ""
         }
     </div>
-    
-    <div class="content">
-        ${journal.richContent || journal.content || ""}
-    </div>
-    
-    <div class="footer">
+    <div class=\"content\" style=\"margin-bottom:24px;\">${
+      journal.richContent || journal.content || ""
+    }</div>
+    <div class=\"footer\" style=\"text-align:center;color:#666;font-size:12px;border-top:1px solid #E0BBE4;padding-top:16px;\">
         <p>Generated by Everquill - ${new Date().toLocaleDateString()}</p>
         <p>Template: ${journal.templateName}</p>
+    </div>
     </div>
 </body>
 </html>`;
 
-    res.setHeader("Content-Type", "text/html");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="journal-${journal._id}.html"`
-    );
-    res.send(html);
+    if (format === "html") {
+      res.setHeader("Content-Type", "text/html");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="journal-${journal._id}.html"`
+      );
+      return res.send(html);
+    }
+
+    // Default: generate PDF via Puppeteer (fallback to HTML if module missing)
+    let puppeteer;
+    try {
+      puppeteer = require("puppeteer");
+    } catch (e) {
+      // Fallback to HTML if puppeteer is not installed
+      console.warn(
+        "[PRINT] Puppeteer not available, falling back to HTML:",
+        e.message
+      );
+      res.setHeader("Content-Type", "text/html");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="journal-${journal._id}.html"`
+      );
+      return res.send(html);
+    }
+
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      const pdf = await page.pdf({ format: "A4", printBackground: true });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="journal-${journal._id}.pdf"`
+      );
+      res.setHeader("Content-Length", Buffer.byteLength(pdf));
+      return res.end(pdf);
+    } finally {
+      await browser.close();
+    }
   } catch (error) {
     console.error("Error generating print download:", error);
     res.status(500).json({
