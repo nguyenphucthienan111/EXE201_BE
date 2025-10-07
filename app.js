@@ -1,7 +1,18 @@
 var dotenv = require("dotenv");
 // Only load .env in development
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== "production") {
   dotenv.config();
+}
+
+// Check required environment variables
+const requiredEnvVars = ["MONGODB_URI", "JWT_SECRET"];
+const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.error("Missing required environment variables:", missingVars);
+  if (process.env.NODE_ENV === "production") {
+    process.exit(1);
+  }
 }
 
 var createError = require("http-errors");
@@ -111,17 +122,17 @@ app.use(function (req, res, next) {
 // error handler
 app.use(function (err, req, res, next) {
   // Log error for debugging
-  console.error('Error:', err);
-  
+  console.error("Error:", err);
+
   // Return JSON error for API endpoints
-  if (req.path.startsWith('/api/')) {
+  if (req.path.startsWith("/api/")) {
     return res.status(err.status || 500).json({
       success: false,
-      message: err.message || 'Internal Server Error',
-      error: process.env.NODE_ENV === 'development' ? err : undefined
+      message: err.message || "Internal Server Error",
+      error: process.env.NODE_ENV === "development" ? err : undefined,
     });
   }
-  
+
   // set locals, only providing error in development
   res.locals.message = err.message;
   res.locals.error = req.app.get("env") === "development" ? err : {};
