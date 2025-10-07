@@ -2,17 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "./bin/www",
-      "use": "@vercel/node",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/api/index.js"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/bin/www"
+      "dest": "/api/index.js"
     }
   ],
   "env": {
