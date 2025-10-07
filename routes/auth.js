@@ -254,12 +254,18 @@ router.post("/forgot", [body("email").isEmail()], function (req, res) {
       var code = uuidv4().slice(0, 6).toUpperCase();
       user.resetPasswordCode = code;
       return user.save().then(function () {
+        console.log(`[DEBUG] Reset code generated for ${email}: ${code}`);
         return mailer.sendVerificationEmail(email, code).then(function () {
-          res.json({ message: "Reset code sent to email" });
+          var payload = { message: "Reset code sent to email" };
+          if (process.env.NODE_ENV !== "production") {
+            payload.devResetCode = code;
+          }
+          res.json(payload);
         });
       });
     })
     .catch(function (err) {
+      console.error("[ERROR] Forgot password error:", err.message);
       res.status(500).json({ message: err.message });
     });
 });
@@ -293,20 +299,46 @@ router.post(
     body("newPassword").isLength({ min: 6 }),
   ],
   function (req, res) {
-    User.findOne({ email: req.body.email.toLowerCase() })
+    var email = req.body.email.toLowerCase();
+    var code = req.body.code.toUpperCase();
+    var newPassword = req.body.newPassword;
+
+    console.log(`[DEBUG] Reset attempt for ${email} with code: ${code}`);
+
+    User.findOne({ email: email })
       .then(function (user) {
-        if (!user) return res.status(404).json({ message: "User not found" });
-        if (user.resetPasswordCode !== req.body.code)
+        if (!user) {
+          console.log(`[DEBUG] User not found: ${email}`);
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        console.log(
+          `[DEBUG] User found, stored code: ${user.resetPasswordCode}, received: ${code}`
+        );
+
+        if (!user.resetPasswordCode) {
+          console.log(`[DEBUG] No reset code found for user: ${email}`);
+          return res.status(400).json({
+            message: "No reset code found. Please request a new one.",
+          });
+        }
+
+        if (user.resetPasswordCode !== code) {
+          console.log(`[DEBUG] Code mismatch for ${email}`);
           return res.status(400).json({ message: "Invalid code" });
-        return bcrypt.hash(req.body.newPassword, 10).then(function (hash) {
+        }
+
+        return bcrypt.hash(newPassword, 10).then(function (hash) {
           user.passwordHash = hash;
           user.resetPasswordCode = undefined;
           return user.save().then(function () {
+            console.log(`[DEBUG] Password updated successfully for ${email}`);
             res.json({ message: "Password updated" });
           });
         });
       })
       .catch(function (err) {
+        console.error("[ERROR] Reset password error:", err.message);
         res.status(500).json({ message: err.message });
       });
   }

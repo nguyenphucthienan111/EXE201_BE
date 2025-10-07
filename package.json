@@ -2,10 +2,15 @@
   "name": "exe201-be",
   "version": "0.0.0",
   "private": true,
+  "main": "bin/www",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node ./bin/www",
     "dev": "nodemon ./bin/www",
-    "create-admin": "node scripts/createAdmin.js"
+    "create-admin": "node scripts/createAdmin.js",
+    "build": "echo 'Build completed'"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -25,6 +30,7 @@
     "mongoose": "^8.18.2",
     "morgan": "~1.9.1",
     "multer": "^1.4.5-lts.1",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
