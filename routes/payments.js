@@ -910,12 +910,10 @@ router.get("/confirm/:paymentId", requireAuth, async (req, res) => {
     }
 
     if (payment.userId.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Not authorized to confirm this payment",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to confirm this payment",
+      });
     }
 
     // If already finalized, return immediately
@@ -996,13 +994,11 @@ router.get("/confirm/:paymentId", requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("Error confirming payment:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error confirming payment",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error confirming payment",
+      error: error.message,
+    });
   }
 });
 
