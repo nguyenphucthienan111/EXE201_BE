@@ -552,7 +552,239 @@ router.get("/admin", requireAdminAuth, async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/templates/admin/{templateId}:
+ *   delete:
+ *     summary: "Delete system templates only (Admin only)"
+ *     description: "Admin can only delete default and premium templates, not user-uploaded templates"
+ *     tags: [Admin Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: templateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           description: Template ID to delete (must be default or premium category)
+ *     responses:
+ *       200:
+ *         description: System template deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deletedTemplate:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         category:
+ *                           type: string
+ *                           enum: [default, premium]
+ *                         usageCount:
+ *                           type: number
+ *       400:
+ *         description: Template is being used by journals
+ *       403:
+ *         description: Admin access required or trying to delete user template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Server error
+ */
+router.delete("/admin/:templateId", requireAdminAuth, async (req, res) => {
+  try {
+    const { templateId } = req.params;
+
+    // Find template
+    const template = await JournalTemplate.findById(templateId);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Template not found",
+      });
+    }
+
+    // Admin can only delete system templates (default, premium), not user templates
+    if (template.category === "user") {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Admin cannot delete user-uploaded templates. Use toggle-status to deactivate instead.",
+        data: {
+          templateId: template._id,
+          templateName: template.name,
+          category: template.category,
+          suggestion:
+            "Use PATCH /api/templates/admin/:templateId/toggle-status to deactivate",
+        },
+      });
+    }
+
+    // Check if template is being used by any journals
+    const journalsUsingTemplate = await Journal.countDocuments({
+      templateId: templateId,
+    });
+
+    if (journalsUsingTemplate > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete template. It is currently being used by ${journalsUsingTemplate} journal(s). Please reassign those journals to other templates first.`,
+        data: {
+          usageCount: journalsUsingTemplate,
+        },
+      });
+    }
+
+    // Delete template file from filesystem
+    try {
+      if (template.imageUrl && fs.existsSync(template.imageUrl)) {
+        fs.unlinkSync(template.imageUrl);
+      }
+      // Also delete thumbnail if it's different from main image
+      if (
+        template.thumbnailUrl &&
+        template.thumbnailUrl !== template.imageUrl &&
+        fs.existsSync(template.thumbnailUrl)
+      ) {
+        fs.unlinkSync(template.thumbnailUrl);
+      }
+    } catch (fileError) {
+      console.error("Error deleting template files:", fileError);
+      // Continue with database deletion even if file deletion fails
+    }
+
+    // Delete template from database
+    await JournalTemplate.findByIdAndDelete(templateId);
+
+    res.json({
+      success: true,
+      message: "System template deleted successfully",
+      data: {
+        deletedTemplate: {
+          id: template._id,
+          name: template.name,
+          category: template.category,
+          usageCount: template.usageCount,
+          uploadedBy: template.uploadedBy,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting template:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting template",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /api/templates/admin/{templateId}/toggle-status:
+ *   patch:
+ *     summary: "Toggle template active status (Admin only)"
+ *     description: "Admin can activate/deactivate any template including user-uploaded ones"
+ *     tags: [Admin Templates]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: templateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           description: Template ID to toggle (any category)
+ *     responses:
+ *       200:
+ *         description: Template status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     template:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         category:
+ *                           type: string
+ *                           enum: [default, premium, user]
+ *                         isActive:
+ *                           type: boolean
+ *                     newStatus:
+ *                       type: boolean
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+  "/admin/:templateId/toggle-status",
+  requireAdminAuth,
+  async (req, res) => {
+    try {
+      const { templateId } = req.params;
+
+      const template = await JournalTemplate.findById(templateId);
+      if (!template) {
+        return res.status(404).json({
+          success: false,
+          message: "Template not found",
+        });
+      }
+
+      // Toggle active status
+      template.isActive = !template.isActive;
+      await template.save();
+
+      res.json({
+        success: true,
+        message: `Template ${
+          template.isActive ? "activated" : "deactivated"
+        } successfully`,
+        data: {
+          template: {
+            id: template._id,
+            name: template.name,
+            category: template.category,
+            isActive: template.isActive,
+          },
+          newStatus: template.isActive,
+        },
+      });
+    } catch (error) {
+      console.error("Error toggling template status:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error updating template status",
+        error: error.message,
+      });
+    }
+  }
+);
+
 module.exports = router;
-
-
-
