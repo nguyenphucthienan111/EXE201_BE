@@ -252,6 +252,7 @@ router.post("/premium", requireAuth, async (req, res) => {
       data: {
         paymentUrl: paymentLinkResponse.checkoutUrl,
         paymentId: payment._id,
+        orderCode: payment.payosOrderId,
         timeLeft: Math.max(
           0,
           Math.floor((payment.paymentTimeout - Date.now()) / 1000)
@@ -566,7 +567,7 @@ router.post("/webhook", async (req, res) => {
       if (payment) {
         payment.status = "failed";
         payment.cancelledAt = new Date();
-    await payment.save();
+        await payment.save();
 
         console.log(`Payment ${payment._id} marked as failed`);
 
@@ -868,6 +869,140 @@ router.post("/test-webhook", async (req, res) => {
       message: "Error in manual webhook test",
       error: error.message,
     });
+  }
+});
+
+/**
+ * @swagger
+ * /api/payments/confirm/{paymentId}:
+ *   get:
+ *     tags: [Payments]
+ *     summary: Xác nhận trạng thái thanh toán trực tiếp từ PayOS (không cần webhook)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của payment đã tạo
+ *     responses:
+ *       200:
+ *         description: Thành công
+ *       400:
+ *         description: Thiếu hoặc sai dữ liệu
+ *       403:
+ *         description: Không có quyền
+ *       404:
+ *         description: Không tìm thấy payment
+ *       500:
+ *         description: Lỗi server
+ */
+router.get("/confirm/:paymentId", requireAuth, async (req, res) => {
+  try {
+    const payment = await Payment.findById(req.params.paymentId);
+
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Payment not found" });
+    }
+
+    if (payment.userId.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "Not authorized to confirm this payment",
+        });
+    }
+
+    // If already finalized, return immediately
+    if (payment.status === "success") {
+      return res.json({
+        success: true,
+        data: {
+          paymentId: payment._id,
+          status: payment.status,
+          paidAt: payment.paidAt,
+        },
+      });
+    }
+
+    // Query PayOS for the latest info using orderCode
+    const payosInfo = await getPaymentLinkInformation(payment.payosOrderId);
+
+    // Normalize status mapping
+    const rawStatus = (payosInfo && payosInfo.status) || "";
+    // PayOS statuses commonly: PENDING, PAID, CANCELED/EXPIRED
+    if (
+      rawStatus === "PAID" ||
+      rawStatus === "SUCCESS" ||
+      rawStatus === "SUCCEEDED"
+    ) {
+      payment.status = "success";
+      payment.paidAt = new Date();
+      await payment.save();
+
+      // Upgrade user if premium payment
+      if (payment.paymentType === "premium_subscription") {
+        const user = await User.findById(payment.userId);
+        if (user) {
+          user.upgradeToPremium(30);
+          await user.save();
+          await Notification.createPremiumUpgradeNotification(
+            user._id,
+            payment.amount,
+            user.premiumExpiresAt
+          );
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Payment confirmed and user upgraded",
+        data: {
+          paymentId: payment._id,
+          status: payment.status,
+        },
+      });
+    }
+
+    if (
+      rawStatus === "CANCELED" ||
+      rawStatus === "CANCELLED" ||
+      rawStatus === "EXPIRED"
+    ) {
+      payment.status = "failed";
+      payment.cancelledAt = new Date();
+      await payment.save();
+      return res.json({
+        success: true,
+        message: "Payment marked as failed",
+        data: { paymentId: payment._id, status: payment.status },
+      });
+    }
+
+    // Still pending or unknown -> return info
+    return res.json({
+      success: true,
+      message: "Payment still pending or unrecognized status",
+      data: {
+        paymentId: payment._id,
+        status: payment.status,
+        payosStatus: rawStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Error confirming payment:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error confirming payment",
+        error: error.message,
+      });
   }
 });
 
