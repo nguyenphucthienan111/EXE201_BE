@@ -291,6 +291,13 @@ router.get("/public", async (req, res) => {
  *           enum: [visible, hidden, all]
  *           default: all
  *       - in: query
+ *         name: rating
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 5
+ *         description: Filter reviews by specific rating (1-5 stars)
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -313,6 +320,15 @@ router.get("/admin", requireAdminAuth, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const visibility = req.query.visibility || "all";
+    const rating = req.query.rating ? parseInt(req.query.rating) : null;
+
+    // Validation for rating parameter
+    if (rating && (rating < 1 || rating > 5)) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be between 1 and 5",
+      });
+    }
 
     // Build query
     let query = {};
@@ -321,7 +337,12 @@ router.get("/admin", requireAdminAuth, async (req, res) => {
     } else if (visibility === "hidden") {
       query.isVisible = false;
     }
-    // If "all", no additional query conditions
+    // If "all", no additional visibility query conditions
+
+    // Add rating filter if specified
+    if (rating) {
+      query.rating = rating;
+    }
 
     // Calculate pagination
     const totalReviews = await Review.countDocuments(query);
@@ -348,6 +369,10 @@ router.get("/admin", requireAdminAuth, async (req, res) => {
           totalReviews,
           hasNext: page < totalPages,
           hasPrev: page > 1,
+        },
+        filters: {
+          visibility: visibility,
+          rating: rating || null,
         },
         statistics: stats,
       },
