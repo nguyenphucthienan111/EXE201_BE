@@ -11,11 +11,9 @@ function enforceJournalCreateLimit(req, res, next) {
   Usage.findOne({ userId: req.user._id, date: today })
     .then(function (usage) {
       if (usage && usage.createdJournals >= 2) {
-        return res
-          .status(403)
-          .json({
-            message: "Free plan limit reached: max 2 journal entries per day",
-          });
+        return res.status(403).json({
+          message: "Free plan limit reached: max 2 journal entries per day",
+        });
       }
       next();
     })
@@ -45,11 +43,9 @@ function enforceBasicSuggestLimit(req, res, next) {
   Usage.findOne({ userId: req.user._id, date: today })
     .then(function (usage) {
       if (usage && usage.basicSuggestionsUsed >= 3) {
-        return res
-          .status(403)
-          .json({
-            message: "Free plan limit reached: max 3 basic suggestions per day",
-          });
+        return res.status(403).json({
+          message: "Free plan limit reached: max 3 basic suggestions per day",
+        });
       }
       next();
     })

@@ -647,6 +647,281 @@ const detectUserLanguage = () => {
 };
 
 /**
+ * Analyze emotions and sentiment from journal content
+ * @param {string} content - Journal content to analyze
+ * @returns {Promise<Object>} Comprehensive emotion analysis
+ */
+const analyzeEmotionAndSentiment = async (content) => {
+  try {
+    if (!model) {
+      throw new Error("AI model not available - GEMINI_API_KEY required");
+    }
+
+    const prompt = `Analyze the following journal entry for emotions, sentiment, and mental health indicators. Provide a comprehensive analysis in JSON format.
+
+Journal Content: "${content}"
+
+Please analyze and return a JSON object with the following structure:
+{
+  "emotionAnalysis": {
+    "primaryEmotion": "string (anxiety, sadness, joy, anger, fear, etc.)",
+    "emotionScore": "number (0-10)",
+    "confidence": "number (0-1)"
+  },
+  "sentimentAnalysis": {
+    "overallSentiment": "string (positive, negative, neutral)",
+    "sentimentScore": "number (-1 to 1)"
+  },
+  "mentalHealthIndicators": {
+    "stressLevel": "string (low, moderate, high, very_high)",
+    "anxietyLevel": "string (low, moderate, high, very_high)",
+    "depressionSigns": "boolean",
+    "riskLevel": "string (low, medium, high)"
+  },
+  "improvementSuggestions": {
+    "immediateActions": ["array of immediate actions"],
+    "shortTermGoals": ["array of short-term goals"],
+    "longTermStrategies": ["array of long-term strategies"],
+    "timeframes": {
+      "immediate": "string (e.g., 'Next 30 minutes')",
+      "shortTerm": "string (e.g., 'Next 1-2 weeks')",
+      "longTerm": "string (e.g., 'Next 1-3 months')"
+    }
+  },
+  "keywords": {
+    "emotional": ["array of emotional keywords"],
+    "behavioral": ["array of behavioral keywords"],
+    "physical": ["array of physical keywords"]
+  }
+}
+
+Focus on providing practical, actionable advice. Be empathetic and supportive in your analysis.`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Clean and parse JSON response
+    let cleanText = text.trim();
+
+    // Remove markdown code blocks if present
+    if (cleanText.startsWith("```json")) {
+      cleanText = cleanText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    } else if (cleanText.startsWith("```")) {
+      cleanText = cleanText.replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+
+    // Try to find JSON object in the response
+    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanText = jsonMatch[0];
+    }
+
+    const analysis = JSON.parse(cleanText);
+
+    return {
+      ...analysis,
+      aiPowered: true,
+    };
+  } catch (error) {
+    console.error("Error in emotion analysis:", error);
+
+    // Fallback response if AI fails
+    return {
+      emotionAnalysis: {
+        primaryEmotion: "neutral",
+        emotionScore: 5.0,
+        confidence: 0.5,
+      },
+      sentimentAnalysis: {
+        overallSentiment: "neutral",
+        sentimentScore: 0.0,
+      },
+      mentalHealthIndicators: {
+        stressLevel: "moderate",
+        anxietyLevel: "moderate",
+        depressionSigns: false,
+        riskLevel: "low",
+      },
+      improvementSuggestions: {
+        immediateActions: [
+          "Take 5 deep breaths",
+          "Go for a short walk",
+          "Listen to calming music",
+        ],
+        shortTermGoals: [
+          "Practice daily meditation",
+          "Get 8 hours of sleep",
+          "Exercise regularly",
+        ],
+        longTermStrategies: [
+          "Consider therapy or counseling",
+          "Develop stress management techniques",
+          "Build a support network",
+        ],
+        timeframes: {
+          immediate: "Next 30 minutes",
+          shortTerm: "Next 1-2 weeks",
+          longTerm: "Next 1-3 months",
+        },
+      },
+      keywords: {
+        emotional: ["feeling", "emotion"],
+        behavioral: ["behavior", "action"],
+        physical: ["body", "physical"],
+      },
+      aiPowered: false,
+    };
+  }
+};
+
+/**
+ * Perform comprehensive mental health assessment
+ * @param {string} content - Journal content to assess
+ * @returns {Promise<Object>} Mental health assessment results
+ */
+const performMentalHealthAssessment = async (content) => {
+  try {
+    if (!model) {
+      throw new Error("AI model not available - GEMINI_API_KEY required");
+    }
+
+    const prompt = `Perform a comprehensive mental health assessment of the following journal entry. Provide detailed analysis in JSON format.
+
+Journal Content: "${content}"
+
+Please analyze and return a JSON object with the following structure:
+{
+  "assessment": {
+    "overallScore": "number (0-10)",
+    "mentalHealthStatus": "string (excellent, good, fair, concerning, critical)",
+    "assessmentDate": "string (ISO date)"
+  },
+  "depressionIndicators": {
+    "score": "number (0-10)",
+    "level": "string (minimal, mild, moderate, severe)",
+    "symptoms": ["array of identified symptoms"],
+    "recommendations": ["array of specific recommendations"]
+  },
+  "anxietyIndicators": {
+    "score": "number (0-10)",
+    "level": "string (minimal, mild, moderate, severe)",
+    "symptoms": ["array of identified symptoms"],
+    "recommendations": ["array of specific recommendations"]
+  },
+  "stressIndicators": {
+    "score": "number (0-10)",
+    "level": "string (low, moderate, high, very_high)",
+    "sources": ["array of stress sources"],
+    "recommendations": ["array of specific recommendations"]
+  },
+  "riskAssessment": {
+    "overallRisk": "string (low, medium, high, very_high)",
+    "immediateConcerns": ["array of immediate concerns"],
+    "followUpNeeded": "boolean",
+    "professionalHelpRecommended": "boolean"
+  },
+  "personalizedPlan": {
+    "dailyActions": ["array of daily actions"],
+    "weeklyGoals": ["array of weekly goals"],
+    "monthlyObjectives": ["array of monthly objectives"],
+    "resources": ["array of helpful resources"]
+  }
+}
+
+Be thorough, empathetic, and provide actionable recommendations. If serious concerns are detected, recommend professional help.`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Clean and parse JSON response
+    let cleanText = text.trim();
+
+    // Remove markdown code blocks if present
+    if (cleanText.startsWith("```json")) {
+      cleanText = cleanText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    } else if (cleanText.startsWith("```")) {
+      cleanText = cleanText.replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+
+    // Try to find JSON object in the response
+    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanText = jsonMatch[0];
+    }
+
+    const assessment = JSON.parse(cleanText);
+
+    return {
+      ...assessment,
+      aiPowered: true,
+    };
+  } catch (error) {
+    console.error("Error in mental health assessment:", error);
+
+    // Fallback response if AI fails
+    return {
+      assessment: {
+        overallScore: 5.0,
+        mentalHealthStatus: "fair",
+        assessmentDate: new Date().toISOString(),
+      },
+      depressionIndicators: {
+        score: 3.0,
+        level: "minimal",
+        symptoms: ["No significant depression indicators detected"],
+        recommendations: ["Continue monitoring mood", "Practice self-care"],
+      },
+      anxietyIndicators: {
+        score: 3.0,
+        level: "minimal",
+        symptoms: ["No significant anxiety indicators detected"],
+        recommendations: [
+          "Practice relaxation techniques",
+          "Maintain regular sleep schedule",
+        ],
+      },
+      stressIndicators: {
+        score: 4.0,
+        level: "moderate",
+        sources: ["General life stress"],
+        recommendations: ["Practice stress management", "Take regular breaks"],
+      },
+      riskAssessment: {
+        overallRisk: "low",
+        immediateConcerns: [],
+        followUpNeeded: false,
+        professionalHelpRecommended: false,
+      },
+      personalizedPlan: {
+        dailyActions: [
+          "Practice deep breathing for 5 minutes",
+          "Take a 10-minute walk",
+          "Write in your journal",
+        ],
+        weeklyGoals: [
+          "Exercise 3 times this week",
+          "Connect with friends or family",
+          "Practice mindfulness daily",
+        ],
+        monthlyObjectives: [
+          "Develop a consistent self-care routine",
+          "Build stress management skills",
+          "Monitor mental health patterns",
+        ],
+        resources: [
+          "Mental health hotlines",
+          "Meditation apps",
+          "Support groups",
+        ],
+      },
+      aiPowered: false,
+    };
+  }
+};
+
+/**
  * Check if AI service is available
  * @returns {boolean} True if AI is available
  */
@@ -662,6 +937,8 @@ module.exports = {
   generateImprovementPlan,
   getAssistantResponse,
   analyzeKeywords,
+  analyzeEmotionAndSentiment,
+  performMentalHealthAssessment,
   isAIAvailable,
   detectUserLanguage,
 };

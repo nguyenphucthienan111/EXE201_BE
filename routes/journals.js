@@ -2,6 +2,7 @@ var express = require("express");
 var router = express.Router();
 var Journal = require("../models/Journal");
 var JournalTemplate = require("../models/JournalTemplate");
+var AIAnalysis = require("../models/AIAnalysis");
 var { requireAuth, requirePremium } = require("../middlewares/auth");
 var {
   enforceJournalCreateLimit,
@@ -17,6 +18,8 @@ var {
   generateImprovementPlan,
   getAssistantResponse,
   analyzeKeywords,
+  analyzeEmotionAndSentiment,
+  performMentalHealthAssessment,
   isAIAvailable,
 } = require("../utils/aiService");
 
@@ -766,113 +769,14 @@ router.post(
   }
 );
 
-// Premium AI assistant for emotional support
+// AI Emotion Analysis for Premium Users
 /**
  * @openapi
- * /api/journals/assistant:
+ * /api/journals/emotion-analysis:
  *   post:
- *     summary: "AI mental health assistant (Premium only)"
+ *     summary: "AI Emotion Analysis - Analyze feelings and provide improvement suggestions (Premium only)"
  *     tags: [Journals]
  *     security: [{ bearerAuth: [] }]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               question:
- *                 type: string
- *                 description: User's question or concern
- *               context:
- *                 type: object
- *                 description: Optional context (recent moods, journal entries)
- *     responses:
- *       200:
- *         description: AI assistant response
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     response:
- *                       type: string
- *                       description: AI assistant's supportive response
- *                     suggestions:
- *                       type: array
- *                       items:
- *                         type: string
- *                       description: Practical suggestions
- *                     resources:
- *                       type: array
- *                       items:
- *                         type: string
- *                       description: Optional mental health resources
- *                     aiPowered:
- *                       type: boolean
- */
-router.post(
-  "/assistant",
-  requireAuth,
-  requirePremium,
-  async function (req, res) {
-    try {
-      const { question, context = {} } = req.body;
-
-      if (!question) {
-        return res.status(400).json({
-          success: false,
-          message: "Question is required",
-        });
-      }
-
-      // Get user's recent context for better AI responses
-      const recentJournals = await Journal.find({ userId: req.user._id })
-        .sort({ createdAt: -1 })
-        .limit(3)
-        .select("content mood createdAt");
-
-      const userContext = {
-        ...context,
-        recentJournals: recentJournals.map((j) => ({
-          content: j.content?.substring(0, 200), // First 200 chars for context
-          mood: j.mood,
-          date: j.createdAt,
-        })),
-      };
-
-      const assistantResponse = await getAssistantResponse(
-        question,
-        userContext
-      );
-
-      res.json({
-        success: true,
-        data: assistantResponse,
-      });
-    } catch (error) {
-      console.error("Error in AI assistant:", error);
-      res.status(500).json({
-        success: false,
-        message: "Error processing assistant request",
-        error: error.message,
-      });
-    }
-  }
-);
-
-// Premium AI sentiment analysis - REAL DEPRESSION/ANXIETY DETECTION
-/**
- * @openapi
- * /api/journals/analyze:
- *   post:
- *     summary: "AI sentiment analysis - depression/anxiety detection (Premium only)"
- *     tags: [Journals]
  *     requestBody:
  *       required: true
  *       content:
@@ -883,12 +787,14 @@ router.post(
  *               content:
  *                 type: string
  *                 description: Journal content to analyze
+ *                 example: "Today I felt really stressed about work and couldn't sleep well..."
  *               journalId:
  *                 type: string
- *                 description: Optional journal ID to save analysis
+ *                 description: Optional journal ID to save analysis results
+ *                 example: "60f7b3b3b3b3b3b3b3b3b3b3"
  *     responses:
  *       200:
- *         description: Detailed sentiment analysis with mental health indicators
+ *         description: Emotion analysis completed successfully
  *         content:
  *           application/json:
  *             schema:
@@ -899,77 +805,641 @@ router.post(
  *                 data:
  *                   type: object
  *                   properties:
- *                     sentiment:
+ *                     emotionAnalysis:
  *                       type: object
  *                       properties:
- *                         score:
- *                           type: number
- *                         label:
+ *                         primaryEmotion:
  *                           type: string
+ *                           example: "anxiety"
+ *                         emotionScore:
+ *                           type: number
+ *                           example: 7.5
  *                         confidence:
  *                           type: number
+ *                           example: 0.85
+ *                     sentimentAnalysis:
+ *                       type: object
+ *                       properties:
+ *                         overallSentiment:
+ *                           type: string
+ *                           example: "negative"
+ *                         sentimentScore:
+ *                           type: number
+ *                           example: -0.3
  *                     mentalHealthIndicators:
  *                       type: object
  *                       properties:
+ *                         stressLevel:
+ *                           type: string
+ *                           enum: [low, moderate, high, very_high]
+ *                         anxietyLevel:
+ *                           type: string
+ *                           enum: [low, moderate, high, very_high]
  *                         depressionSigns:
- *                           type: boolean
- *                         anxietySigns:
- *                           type: boolean
- *                         stressSigns:
  *                           type: boolean
  *                         riskLevel:
  *                           type: string
  *                           enum: [low, medium, high]
+ *                     improvementSuggestions:
+ *                       type: object
+ *                       properties:
+ *                         immediateActions:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["Take 5 deep breaths", "Go for a 10-minute walk"]
+ *                         shortTermGoals:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["Practice meditation daily", "Get 8 hours of sleep"]
+ *                         longTermStrategies:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           example: ["Consider therapy", "Develop stress management routine"]
+ *                         timeframes:
+ *                           type: object
+ *                           properties:
+ *                             immediate:
+ *                               type: string
+ *                               example: "Next 30 minutes"
+ *                             shortTerm:
+ *                               type: string
+ *                               example: "Next 1-2 weeks"
+ *                             longTerm:
+ *                               type: string
+ *                               example: "Next 1-3 months"
  *                     keywords:
  *                       type: object
- *                     recommendations:
- *                       type: array
- *                       items:
- *                         type: string
+ *                       properties:
+ *                         emotional:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         behavioral:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         physical:
+ *                           type: array
+ *                           items:
+ *                             type: string
  *                     aiPowered:
  *                       type: boolean
+ *       400:
+ *         description: Bad request - content required
+ *       403:
+ *         description: Premium subscription required
+ *       500:
+ *         description: Server error
  */
-router.post("/analyze", requireAuth, requirePremium, async function (req, res) {
-  try {
-    const { content, journalId } = req.body;
+router.post(
+  "/emotion-analysis",
+  requireAuth,
+  requirePremium,
+  async function (req, res) {
+    try {
+      const { content, journalId } = req.body;
 
-    if (!content) {
-      return res.status(400).json({
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Content is required for emotion analysis",
+        });
+      }
+
+      // Perform comprehensive emotion analysis
+      const emotionAnalysis = await analyzeEmotionAndSentiment(content);
+
+      // Save analysis to database
+      const savedAnalysis = new AIAnalysis({
+        userId: req.user._id,
+        journalId: journalId || null,
+        analysisType: "emotion",
+        content: content,
+        results: emotionAnalysis,
+        aiPowered: emotionAnalysis.aiPowered,
+      });
+      await savedAnalysis.save();
+
+      // Save analysis to journal if requested
+      if (journalId) {
+        await Journal.findOneAndUpdate(
+          { _id: journalId, userId: req.user._id },
+          {
+            emotionAnalysis: {
+              analyzedAt: new Date(),
+              primaryEmotion: emotionAnalysis.emotionAnalysis.primaryEmotion,
+              emotionScore: emotionAnalysis.emotionAnalysis.emotionScore,
+              riskLevel: emotionAnalysis.mentalHealthIndicators.riskLevel,
+              suggestions:
+                emotionAnalysis.improvementSuggestions.immediateActions,
+            },
+          }
+        );
+      }
+
+      res.json({
+        success: true,
+        data: {
+          ...emotionAnalysis,
+          analysisId: savedAnalysis._id,
+          savedAt: savedAnalysis.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error("Error in emotion analysis:", error);
+      res.status(500).json({
         success: false,
-        message: "Content is required for analysis",
+        message: "Error analyzing emotions",
+        error: error.message,
       });
     }
-
-    // Perform advanced AI sentiment analysis
-    const analysis = await analyzeSentiment(content);
-
-    // Save analysis to journal if requested
-    if (journalId) {
-      await Journal.findOneAndUpdate(
-        { _id: journalId, userId: req.user._id },
-        {
-          suggestion: `Analysis: ${analysis.sentiment.label} (${
-            analysis.sentiment.score
-          })\nRisk: ${
-            analysis.mentalHealthIndicators.riskLevel
-          }\nRecommendations: ${analysis.recommendations.join(", ")}`,
-        }
-      );
-    }
-
-    res.json({
-      success: true,
-      data: analysis,
-    });
-  } catch (error) {
-    console.error("Error in sentiment analysis:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error analyzing content",
-      error: error.message,
-    });
   }
-});
+);
+
+// AI Mental Health Assessment for Premium Users
+/**
+ * @openapi
+ * /api/journals/mental-health-assessment:
+ *   post:
+ *     summary: "AI Mental Health Assessment - Comprehensive mental health evaluation (Premium only)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 description: Journal content to assess
+ *                 example: "I've been feeling really down lately and having trouble sleeping..."
+ *               journalId:
+ *                 type: string
+ *                 description: Optional journal ID to save assessment results
+ *                 example: "60f7b3b3b3b3b3b3b3b3b3b3"
+ *     responses:
+ *       200:
+ *         description: Mental health assessment completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     assessment:
+ *                       type: object
+ *                       properties:
+ *                         overallScore:
+ *                           type: number
+ *                           example: 6.2
+ *                         mentalHealthStatus:
+ *                           type: string
+ *                           enum: [excellent, good, fair, concerning, critical]
+ *                         assessmentDate:
+ *                           type: string
+ *                           format: date-time
+ *                     depressionIndicators:
+ *                       type: object
+ *                       properties:
+ *                         score:
+ *                           type: number
+ *                           example: 7.5
+ *                         level:
+ *                           type: string
+ *                           enum: [minimal, mild, moderate, severe]
+ *                         symptoms:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         recommendations:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                     anxietyIndicators:
+ *                       type: object
+ *                       properties:
+ *                         score:
+ *                           type: number
+ *                           example: 6.8
+ *                         level:
+ *                           type: string
+ *                           enum: [minimal, mild, moderate, severe]
+ *                         symptoms:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         recommendations:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                     stressIndicators:
+ *                       type: object
+ *                       properties:
+ *                         score:
+ *                           type: number
+ *                           example: 8.2
+ *                         level:
+ *                           type: string
+ *                           enum: [low, moderate, high, very_high]
+ *                         sources:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         recommendations:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                     riskAssessment:
+ *                       type: object
+ *                       properties:
+ *                         overallRisk:
+ *                           type: string
+ *                           enum: [low, medium, high, very_high]
+ *                         immediateConcerns:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         followUpNeeded:
+ *                           type: boolean
+ *                         professionalHelpRecommended:
+ *                           type: boolean
+ *                     personalizedPlan:
+ *                       type: object
+ *                       properties:
+ *                         dailyActions:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         weeklyGoals:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         monthlyObjectives:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         resources:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                     aiPowered:
+ *                       type: boolean
+ *       400:
+ *         description: Bad request - content required
+ *       403:
+ *         description: Premium subscription required
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/mental-health-assessment",
+  requireAuth,
+  requirePremium,
+  async function (req, res) {
+    try {
+      const { content, journalId } = req.body;
+
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Content is required for mental health assessment",
+        });
+      }
+
+      // Perform comprehensive mental health assessment
+      const assessment = await performMentalHealthAssessment(content);
+
+      // Save assessment to database
+      const savedAssessment = new AIAnalysis({
+        userId: req.user._id,
+        journalId: journalId || null,
+        analysisType: "mental_health",
+        content: content,
+        results: assessment,
+        aiPowered: assessment.aiPowered,
+      });
+      await savedAssessment.save();
+
+      // Save assessment to journal if requested
+      if (journalId) {
+        await Journal.findOneAndUpdate(
+          { _id: journalId, userId: req.user._id },
+          {
+            mentalHealthAssessment: {
+              assessedAt: new Date(),
+              overallScore: assessment.assessment.overallScore,
+              mentalHealthStatus: assessment.assessment.mentalHealthStatus,
+              riskLevel: assessment.riskAssessment.overallRisk,
+              professionalHelpRecommended:
+                assessment.riskAssessment.professionalHelpRecommended,
+            },
+          }
+        );
+      }
+
+      res.json({
+        success: true,
+        data: {
+          ...assessment,
+          analysisId: savedAssessment._id,
+          savedAt: savedAssessment.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error("Error in mental health assessment:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error performing mental health assessment",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Get AI Analysis History
+/**
+ * @openapi
+ * /api/journals/ai-analysis/history:
+ *   get:
+ *     summary: "Get AI analysis history (Premium only)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [emotion, mental_health, all]
+ *           default: all
+ *         description: Filter by analysis type
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
+ *         description: Number of results per page
+ *     responses:
+ *       200:
+ *         description: AI analysis history retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     analyses:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     pagination:
+ *                       type: object
+ *                     stats:
+ *                       type: object
+ *       403:
+ *         description: Premium subscription required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/ai-analysis/history",
+  requireAuth,
+  requirePremium,
+  async function (req, res) {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+      const type = req.query.type || "all";
+      const skip = (page - 1) * limit;
+
+      // Build query
+      let query = { userId: req.user._id };
+      if (type !== "all") {
+        query.analysisType = type;
+      }
+
+      // Get analyses with pagination
+      const [analyses, totalCount] = await Promise.all([
+        AIAnalysis.getUserAnalysisHistory(
+          req.user._id,
+          type === "all" ? null : type,
+          limit,
+          skip
+        ),
+        AIAnalysis.countDocuments(query),
+      ]);
+
+      const totalPages = Math.ceil(totalCount / limit);
+
+      // Get statistics
+      const stats = await AIAnalysis.getAnalysisStats(req.user._id);
+
+      res.json({
+        success: true,
+        data: {
+          analyses: analyses.map((analysis) => ({
+            id: analysis._id,
+            type: analysis.analysisType,
+            content:
+              analysis.content.substring(0, 200) +
+              (analysis.content.length > 200 ? "..." : ""),
+            results: analysis.results,
+            aiPowered: analysis.aiPowered,
+            createdAt: analysis.createdAt,
+            journalTitle: analysis.journalId?.title || null,
+            journalDate: analysis.journalId?.createdAt || null,
+          })),
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalCount,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+          },
+          stats: stats.reduce((acc, stat) => {
+            acc[stat._id] = {
+              count: stat.count,
+              lastAnalysis: stat.lastAnalysis,
+            };
+            return acc;
+          }, {}),
+        },
+      });
+    } catch (error) {
+      console.error("Error getting AI analysis history:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error retrieving analysis history",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Get recent AI analyses (MUST be before /:id route to avoid conflict)
+/**
+ * @openapi
+ * /api/journals/ai-analysis/recent:
+ *   get:
+ *     summary: "Get recent AI analyses (Premium only)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 5
+ *           maximum: 20
+ *         description: Number of recent analyses to retrieve
+ *     responses:
+ *       200:
+ *         description: Recent AI analyses retrieved successfully
+ *       403:
+ *         description: Premium subscription required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/ai-analysis/recent",
+  requireAuth,
+  requirePremium,
+  async function (req, res) {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+
+      const recentAnalyses = await AIAnalysis.getRecentAnalysis(
+        req.user._id,
+        limit
+      );
+
+      res.json({
+        success: true,
+        data: {
+          analyses: recentAnalyses.map((analysis) => ({
+            id: analysis._id,
+            type: analysis.analysisType,
+            results: analysis.results,
+            aiPowered: analysis.aiPowered,
+            createdAt: analysis.createdAt,
+            journalTitle: analysis.journalId?.title || null,
+          })),
+          count: recentAnalyses.length,
+        },
+      });
+    } catch (error) {
+      console.error("Error getting recent AI analyses:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error retrieving recent analyses",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Get specific AI analysis
+/**
+ * @openapi
+ * /api/journals/ai-analysis/{id}:
+ *   get:
+ *     summary: "Get specific AI analysis details (Premium only)"
+ *     tags: [Journals]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Analysis ID
+ *     responses:
+ *       200:
+ *         description: AI analysis details retrieved successfully
+ *       404:
+ *         description: Analysis not found
+ *       403:
+ *         description: Premium subscription required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/ai-analysis/:id",
+  requireAuth,
+  requirePremium,
+  async function (req, res) {
+    try {
+      const { id } = req.params;
+
+      // Validate ObjectId format
+      if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid analysis ID format",
+        });
+      }
+
+      const analysis = await AIAnalysis.findOne({
+        _id: id,
+        userId: req.user._id,
+      }).populate("journalId", "title content createdAt");
+
+      if (!analysis) {
+        return res.status(404).json({
+          success: false,
+          message: "Analysis not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          id: analysis._id,
+          type: analysis.analysisType,
+          content: analysis.content,
+          results: analysis.results,
+          aiPowered: analysis.aiPowered,
+          createdAt: analysis.createdAt,
+          updatedAt: analysis.updatedAt,
+          journal: analysis.journalId
+            ? {
+                id: analysis.journalId._id,
+                title: analysis.journalId.title,
+                content: analysis.journalId.content,
+                createdAt: analysis.journalId.createdAt,
+              }
+            : null,
+        },
+      });
+    } catch (error) {
+      console.error("Error getting AI analysis:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error retrieving analysis",
+        error: error.message,
+      });
+    }
+  }
+);
 
 /**
  * @openapi
