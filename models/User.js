@@ -13,6 +13,8 @@ var userSchema = new mongoose.Schema({
   premiumExpiresAt: { type: Date },
   premiumStartedAt: { type: Date },
   role: { type: String, enum: ["user", "admin"], default: "user" },
+  avatar: { type: String },
+  pendingEmail: { type: String },
   createdAt: { type: Date, default: Date.now },
 });
 

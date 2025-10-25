@@ -106,7 +106,7 @@ var swaggerSpec = swaggerJsdoc({
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/", indexRouter);
-app.use("/users", usersRouter);
+app.use("/api/users", usersRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/journals", journalRouter);
 app.use("/api/moods", moodRouter);

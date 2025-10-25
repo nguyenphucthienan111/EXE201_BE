@@ -4,6 +4,38 @@ var { requireAuth } = require("../middlewares/auth");
 var User = require("../models/User");
 var Journal = require("../models/Journal");
 var Mood = require("../models/Mood");
+var multer = require("multer");
+var path = require("path");
+var fs = require("fs");
+
+// Configure multer for avatar uploads
+var storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/avatars/");
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename: userId_timestamp.extension
+    var userId = req.user._id.toString();
+    var timestamp = Date.now();
+    var extension = path.extname(file.originalname);
+    cb(null, `${userId}_${timestamp}${extension}`);
+  },
+});
+
+var upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Only allow image files
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed!"), false);
+    }
+  },
+});
 
 /* Get my profile */
 /**
@@ -33,6 +65,13 @@ var Mood = require("../models/Mood");
  */
 router.get("/me", requireAuth, function (req, res) {
   const user = req.user;
+
+  // Convert relative avatar path to full URL if it exists
+  var avatarUrl = user.avatar;
+  if (avatarUrl && avatarUrl.startsWith("/uploads/")) {
+    avatarUrl = `${req.protocol}://${req.get("host")}${avatarUrl}`;
+  }
+
   res.json({
     id: user._id,
     email: user.email,
@@ -42,6 +81,7 @@ router.get("/me", requireAuth, function (req, res) {
     premiumExpiresAt: user.premiumExpiresAt,
     premiumDaysLeft: user.getPremiumDaysLeft(),
     isPremiumActive: user.isPremiumActive(),
+    avatar: avatarUrl,
     createdAt: user.createdAt,
   });
 });
@@ -80,6 +120,10 @@ router.get("/me", requireAuth, function (req, res) {
  */
 router.put("/me", requireAuth, async function (req, res) {
   try {
+    console.log("PUT /api/users/me - Request received");
+    console.log("Request body:", req.body);
+    console.log("User:", req.user ? req.user._id : "No user");
+
     const { name } = req.body;
 
     // Validation
@@ -244,6 +288,238 @@ router.get("/premium-info", requireAuth, async function (req, res) {
     res.status(500).json({
       success: false,
       message: "Error getting premium information",
+      error: err.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /users/change-email:
+ *   post:
+ *     summary: Change user email address
+ *     tags: [Users]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newEmail]
+ *             properties:
+ *               newEmail: { type: string, format: email }
+ *     responses:
+ *       200:
+ *         description: Verification email sent
+ *       400:
+ *         description: Invalid email
+ *       500:
+ *         description: Server error
+ */
+router.post("/change-email", requireAuth, async function (req, res) {
+  try {
+    const { newEmail } = req.body;
+
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
+      });
+    }
+
+    if (newEmail.toLowerCase() === req.user.email.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: "New email must be different from current email",
+      });
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: newEmail.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address already in use",
+      });
+    }
+
+    // Generate verification code
+    const verificationCode = Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase();
+
+    // Update user with pending email change
+    req.user.pendingEmail = newEmail.toLowerCase();
+    req.user.emailVerificationCode = verificationCode;
+    await req.user.save();
+
+    // Send verification email to new email
+    const { sendVerificationEmail } = require("../utils/mailer");
+    await sendVerificationEmail(newEmail, verificationCode);
+
+    res.json({
+      success: true,
+      message: "Verification email sent to your new email address",
+    });
+  } catch (err) {
+    console.error("Error changing email:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error changing email",
+      error: err.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /users/resend-verification:
+ *   post:
+ *     summary: Resend email verification
+ *     tags: [Users]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Verification email sent
+ *       500:
+ *         description: Server error
+ */
+router.post("/resend-verification", requireAuth, async function (req, res) {
+  try {
+    if (req.user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+    }
+
+    // Generate new verification code
+    const verificationCode = Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase();
+    req.user.emailVerificationCode = verificationCode;
+    await req.user.save();
+
+    // Send verification email
+    const { sendVerificationEmail } = require("../utils/mailer");
+    await sendVerificationEmail(req.user.email, verificationCode);
+
+    res.json({
+      success: true,
+      message: "Verification email sent successfully",
+    });
+  } catch (err) {
+    console.error("Error resending verification:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error resending verification email",
+      error: err.message,
+    });
+  }
+});
+
+/**
+ * @openapi
+ * /users/avatar:
+ *   post:
+ *     summary: Upload user avatar
+ *     tags: [Users]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded successfully
+ *       400:
+ *         description: Invalid file
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/avatar",
+  requireAuth,
+  upload.single("avatar"),
+  async function (req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No file uploaded",
+        });
+      }
+
+      // Delete old avatar if exists
+      if (req.user.avatar && req.user.avatar.includes("uploads/avatars/")) {
+        var oldAvatarPath = path.join(__dirname, "..", req.user.avatar);
+        if (fs.existsSync(oldAvatarPath)) {
+          fs.unlinkSync(oldAvatarPath);
+        }
+      }
+
+      // Update user avatar with new file path
+      var avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      req.user.avatar = avatarUrl;
+      await req.user.save();
+
+      // Return full URL for frontend
+      var fullAvatarUrl = `${req.protocol}://${req.get("host")}${avatarUrl}`;
+
+      res.json({
+        success: true,
+        message: "Avatar updated successfully",
+        data: {
+          avatarUrl: fullAvatarUrl,
+        },
+      });
+    } catch (err) {
+      console.error("Error uploading avatar:", err);
+      res.status(500).json({
+        success: false,
+        message: "Error uploading avatar",
+        error: err.message,
+      });
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /users/avatar:
+ *   delete:
+ *     summary: Remove user avatar
+ *     tags: [Users]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Avatar removed successfully
+ *       500:
+ *         description: Server error
+ */
+router.delete("/avatar", requireAuth, async function (req, res) {
+  try {
+    req.user.avatar = null;
+    await req.user.save();
+
+    res.json({
+      success: true,
+      message: "Avatar removed successfully",
+    });
+  } catch (err) {
+    console.error("Error removing avatar:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error removing avatar",
       error: err.message,
     });
   }
