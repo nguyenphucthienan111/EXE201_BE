@@ -196,7 +196,7 @@ router.post("/premium", requireAuth, async (req, res) => {
     }
 
     // Premium subscription details
-    const premiumAmount = 5000;
+    const premiumAmount = 41000;
     const premiumDescription = "Premium upgrade"; // Phải ≤ 25 ký tự
 
     // Generate unique PayOS order ID (must be a number)

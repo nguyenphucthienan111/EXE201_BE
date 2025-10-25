@@ -36,10 +36,10 @@ router.post("/set", requireAuth, async function (req, res) {
     var user = await User.findById(req.user._id);
 
     if (plan === "premium") {
-      user.upgradeToPremium(30); // 30 days premium for testing
+      user.upgradeToPremium(30);
       await Notification.createPremiumUpgradeNotification(
         user._id,
-        5000, // Mock payment amount
+        41000,
         user.premiumExpiresAt
       );
     } else {

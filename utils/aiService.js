@@ -35,15 +35,16 @@ try {
 const generateWritingPrompts = async (
   mood = "",
   topic = "",
-  isPremium = false
+  isPremium = false,
+  content = ""
 ) => {
   try {
     if (!model) {
       throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
-    // Detect user language preference (default to Vietnamese for Vietnamese users)
-    const userLanguage = detectUserLanguage();
+    // Detect user language preference from content or default to Vietnamese
+    const userLanguage = detectUserLanguage(content);
 
     // Construct AI prompt
     const aiPrompt = `Generate ${
@@ -56,6 +57,12 @@ Context:
 - Tone: Supportive, non-judgmental, encouraging
 - Language: ${userLanguage === "vi" ? "Vietnamese (Tiếng Việt)" : "English"}
 - Target: Personal emotional processing and self-reflection
+
+${
+  userLanguage === "vi"
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All prompts should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All prompts should be in English.`
+}
 
 Requirements:
 - Each prompt should be 1-2 sentences
@@ -117,14 +124,18 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
  * @param {string} mood - Current user mood
  * @returns {Promise<Array>} Array of 10 advanced writing prompts
  */
-const generateAdvancedPrompts = async (topic = "reflection", mood = "") => {
+const generateAdvancedPrompts = async (
+  topic = "reflection",
+  mood = "",
+  content = ""
+) => {
   try {
     if (!model) {
       throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
-    // Detect user language preference
-    const userLanguage = detectUserLanguage();
+    // Detect user language preference from content
+    const userLanguage = detectUserLanguage(content);
 
     // Construct advanced AI prompt
     const aiPrompt = `Generate 10 sophisticated, in-depth writing prompts for mental health journaling focused on the topic: "${topic}".
@@ -135,6 +146,12 @@ Context:
 - Tone: Thoughtful, introspective, encouraging deep reflection
 - Language: ${userLanguage === "vi" ? "Vietnamese (Tiếng Việt)" : "English"}
 - Target: Advanced emotional processing and personal growth
+
+${
+  userLanguage === "vi"
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All prompts should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All prompts should be in English.`
+}
 
 Requirements:
 - Each prompt should be 1-2 sentences
@@ -183,14 +200,21 @@ Return as a JSON array of strings: ["prompt1", "prompt2", ...]`;
  * @param {string} moodType - Type of mood (happy, sad, anxious, etc.)
  * @returns {Promise<Array>} Array of mood-specific questions
  */
-const generateMoodReflections = async (moodType) => {
+const generateMoodReflections = async (moodType, content = "") => {
   if (!model) {
     throw new Error("AI model not available - GEMINI_API_KEY required");
   }
 
-  const userLanguage = detectUserLanguage();
+  const userLanguage = detectUserLanguage(content);
   const prompt = `Generate 3 brief mood-reflection questions for the mood: ${moodType}. 
 Language: ${userLanguage === "vi" ? "Vietnamese (Tiếng Việt)" : "English"}
+
+${
+  userLanguage === "vi"
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All questions should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All questions should be in English.`
+}
+
 Return JSON array of strings.`;
   const result = await model.generateContent(prompt);
   const text = (await result.response).text();
@@ -217,9 +241,19 @@ const analyzeSentiment = async (content) => {
       throw new Error("AI model/content missing");
     }
 
+    // Detect language from content
+    const userLanguage = detectUserLanguage(content);
+    const isVietnamese = userLanguage === "vi";
+
     const analysisPrompt = `Analyze this journal entry for mental health indicators and sentiment:
 
 "${content}"
+
+${
+  isVietnamese
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All analysis results and recommendations should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All analysis results and recommendations should be in English.`
+}
 
 Provide a detailed psychological analysis including:
 1. Overall sentiment (positive/negative/neutral with 0-1 score)
@@ -228,28 +262,46 @@ Provide a detailed psychological analysis including:
 4. Key emotional keywords found
 5. Supportive recommendations (2-3 gentle suggestions)
 
+${
+  isVietnamese
+    ? `Use Vietnamese language naturally and culturally appropriate. Be empathetic and supportive in your analysis.`
+    : `Use English language naturally. Be empathetic and supportive in your analysis.`
+}
+
 Respond in this exact JSON format:
 {
   "sentiment": {
     "score": 0.7,
-    "label": "positive",
+    "label": "${isVietnamese ? "tích cực" : "positive"}",
     "confidence": 0.85
   },
   "mentalHealthIndicators": {
     "depressionSigns": false,
     "anxietySigns": true,
     "stressSigns": false,
-    "riskLevel": "medium",
-    "details": "User mentions worry and sleep issues"
+    "riskLevel": "${isVietnamese ? "trung bình" : "medium"}",
+    "details": "${
+      isVietnamese
+        ? "Người dùng đề cập đến lo lắng và vấn đề về giấc ngủ"
+        : "User mentions worry and sleep issues"
+    }"
   },
   "keywords": {
-    "positive": ["happy", "grateful"],
-    "negative": ["worried", "tired"],
-    "emotional": ["anxious", "hopeful"]
+    "positive": ["${isVietnamese ? "vui vẻ, biết ơn" : "happy, grateful"}"],
+    "negative": ["${isVietnamese ? "lo lắng, mệt mỏi" : "worried, tired"}"],
+    "emotional": ["${isVietnamese ? "lo âu, hy vọng" : "anxious, hopeful"}"]
   },
   "recommendations": [
-    "Consider practicing breathing exercises when feeling anxious",
-    "Try to maintain a regular sleep schedule"
+    "${
+      isVietnamese
+        ? "Hãy thử thực hành các bài tập thở khi cảm thấy lo âu"
+        : "Consider practicing breathing exercises when feeling anxious"
+    }",
+    "${
+      isVietnamese
+        ? "Cố gắng duy trì lịch trình ngủ đều đặn"
+        : "Try to maintain a regular sleep schedule"
+    }"
   ]
 }`;
 
@@ -295,11 +347,19 @@ Respond in this exact JSON format:
  * @param {Array} recentAnalyses - Recent sentiment analyses
  * @returns {Promise<Object>} Personalized improvement plan
  */
-const generateImprovementPlan = async (userProfile, recentAnalyses) => {
+const generateImprovementPlan = async (
+  userProfile,
+  recentAnalyses,
+  content = ""
+) => {
   try {
     if (!model) {
       throw new Error("AI model not available - GEMINI_API_KEY required");
     }
+
+    // Detect language from content
+    const userLanguage = detectUserLanguage(content);
+    const isVietnamese = userLanguage === "vi";
 
     const planPrompt = `Create a personalized 7-day mental wellness improvement plan based on:
 
@@ -307,24 +367,56 @@ User Profile:
 - Recent mood patterns: ${JSON.stringify(userProfile)}
 - Sentiment analysis trends: ${JSON.stringify(recentAnalyses)}
 
+${
+  isVietnamese
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All plan content, activities, tips, and titles should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All plan content, activities, tips, and titles should be in English.`
+}
+
 Create a supportive, evidence-based plan with:
 1. Plan type (emotional_release, positivity_building, stress_management, etc.)
 2. 7 daily activities (specific, actionable, 5-15 minutes each)
 3. 3-5 practical tips
 4. Motivational title
 
+${
+  isVietnamese
+    ? `Use Vietnamese language naturally and culturally appropriate. Be empathetic and supportive in your plan.`
+    : `Use English language naturally. Be empathetic and supportive in your plan.`
+}
+
 Respond ONLY with a single valid JSON object. Do not include any prose, introductions, explanations, or code fences. JSON must strictly match this schema:
 {
   "planType": "emotional_release",
-  "title": "Your Personal Emotional Release Journey",
-  "duration": "7 days",
+  "title": "${
+    isVietnamese
+      ? "Hành Trình Giải Phóng Cảm Xúc Cá Nhân"
+      : "Your Personal Emotional Release Journey"
+  }",
+  "duration": "${isVietnamese ? "7 ngày" : "7 days"}",
   "activities": [
-    {"day": 1, "activity": "Write about your current feelings without judgment"},
-    {"day": 2, "activity": "Practice the 4-7-8 breathing technique"}
+    {"day": 1, "activity": "${
+      isVietnamese
+        ? "Viết về cảm xúc hiện tại của bạn mà không phán xét"
+        : "Write about your current feelings without judgment"
+    }"},
+    {"day": 2, "activity": "${
+      isVietnamese
+        ? "Thực hành kỹ thuật thở 4-7-8"
+        : "Practice the 4-7-8 breathing technique"
+    }"}
   ],
   "tips": [
-    "Allow yourself to feel emotions without trying to fix them",
-    "Progress isn't linear - some days will be harder than others"
+    "${
+      isVietnamese
+        ? "Cho phép bản thân cảm nhận cảm xúc mà không cố gắng sửa chữa chúng"
+        : "Allow yourself to feel emotions without trying to fix them"
+    }",
+    "${
+      isVietnamese
+        ? "Tiến bộ không phải là tuyến tính - một số ngày sẽ khó khăn hơn những ngày khác"
+        : "Progress isn't linear - some days will be harder than others"
+    }"
   ]
 }`;
 
@@ -373,16 +465,26 @@ Respond ONLY with a single valid JSON object. Do not include any prose, introduc
  * @param {Object} context - User context (recent moods, etc.)
  * @returns {Promise<Object>} AI assistant response
  */
-const getAssistantResponse = async (question, context = {}) => {
+const getAssistantResponse = async (question, context = {}, content = "") => {
   try {
     if (!model) {
       throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
+    // Detect language from content or question
+    const userLanguage = detectUserLanguage(content || question);
+    const isVietnamese = userLanguage === "vi";
+
     const assistantPrompt = `You are a supportive mental health companion. The user asks: "${question}"
 
 Context about the user:
 ${JSON.stringify(context)}
+
+${
+  isVietnamese
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All responses, suggestions, and resources should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All responses, suggestions, and resources should be in English.`
+}
 
 Provide a compassionate, helpful response that:
 - Acknowledges their feelings
@@ -391,15 +493,29 @@ Provide a compassionate, helpful response that:
 - Encourages professional help if needed
 - Stays within ethical boundaries (not a replacement for therapy)
 
+${
+  isVietnamese
+    ? `Use Vietnamese language naturally and culturally appropriate. Be empathetic and supportive in your response.`
+    : `Use English language naturally. Be empathetic and supportive in your response.`
+}
+
 Respond in this JSON format:
 {
-  "response": "A supportive, empathetic response...",
+  "response": "${
+    isVietnamese
+      ? "Một phản hồi hỗ trợ, đồng cảm..."
+      : "A supportive, empathetic response..."
+  }",
   "suggestions": [
-    "Practical suggestion 1",
-    "Practical suggestion 2"
+    "${isVietnamese ? "Gợi ý thực tế 1" : "Practical suggestion 1"}",
+    "${isVietnamese ? "Gợi ý thực tế 2" : "Practical suggestion 2"}"
   ],
   "resources": [
-    "Optional mental health resources if relevant"
+    "${
+      isVietnamese
+        ? "Tài nguyên sức khỏe tâm thần tùy chọn nếu có liên quan"
+        : "Optional mental health resources if relevant"
+    }"
   ]
 }`;
 
@@ -439,49 +555,96 @@ const analyzeKeywords = (journalEntries) => {
     .join(" ")
     .toLowerCase();
 
+  // Detect language from content
+  const userLanguage = detectUserLanguage(allText);
+  const isVietnamese = userLanguage === "vi";
+
   // Emotional keyword categories
-  const emotionalKeywords = {
-    positive: [
-      "happy",
-      "joy",
-      "grateful",
-      "love",
-      "excited",
-      "peaceful",
-      "confident",
-      "hopeful",
-      "proud",
-      "content",
-    ],
-    negative: [
-      "sad",
-      "angry",
-      "frustrated",
-      "disappointed",
-      "hurt",
-      "lonely",
-      "overwhelmed",
-      "stressed",
-    ],
-    anxiety: [
-      "worried",
-      "anxious",
-      "nervous",
-      "panic",
-      "fear",
-      "uncertain",
-      "restless",
-    ],
-    depression: [
-      "depressed",
-      "hopeless",
-      "empty",
-      "worthless",
-      "tired",
-      "numb",
-      "lost",
-    ],
-  };
+  const emotionalKeywords = isVietnamese
+    ? {
+        positive: [
+          "vui",
+          "hạnh phúc",
+          "vui vẻ",
+          "biết ơn",
+          "yêu",
+          "hào hứng",
+          "bình yên",
+          "tự tin",
+          "hy vọng",
+          "tự hào",
+          "hài lòng",
+        ],
+        negative: [
+          "buồn",
+          "tức giận",
+          "thất vọng",
+          "tổn thương",
+          "cô đơn",
+          "choáng ngợp",
+          "căng thẳng",
+        ],
+        anxiety: [
+          "lo lắng",
+          "lo âu",
+          "bồn chồn",
+          "hoảng sợ",
+          "sợ hãi",
+          "không chắc chắn",
+          "bất an",
+        ],
+        depression: [
+          "trầm cảm",
+          "tuyệt vọng",
+          "trống rỗng",
+          "vô giá trị",
+          "mệt mỏi",
+          "tê liệt",
+          "lạc lõng",
+        ],
+      }
+    : {
+        positive: [
+          "happy",
+          "joy",
+          "grateful",
+          "love",
+          "excited",
+          "peaceful",
+          "confident",
+          "hopeful",
+          "proud",
+          "content",
+        ],
+        negative: [
+          "sad",
+          "angry",
+          "frustrated",
+          "disappointed",
+          "hurt",
+          "lonely",
+          "overwhelmed",
+          "stressed",
+        ],
+        anxiety: [
+          "worried",
+          "anxious",
+          "nervous",
+          "panic",
+          "fear",
+          "uncertain",
+          "restless",
+        ],
+        depression: [
+          "depressed",
+          "hopeless",
+          "empty",
+          "worthless",
+          "tired",
+          "numb",
+          "lost",
+        ],
+      };
 
   const keywordFrequency = {};
   const categoryFrequency = {
@@ -540,32 +703,44 @@ const analyzeKeywords = (journalEntries) => {
     emotionalBalance,
     totalWords: allText.split(" ").length,
     totalEmotionalWords: totalEmotional,
-    insights: generateKeywordInsights(categoryFrequency, emotionalBalance),
+    insights: generateKeywordInsights(
+      categoryFrequency,
+      emotionalBalance,
+      allText
+    ),
   };
 };
 
 /**
  * Generate insights from keyword analysis
  */
-const generateKeywordInsights = (categoryFreq, balance) => {
+const generateKeywordInsights = (categoryFreq, balance, content = "") => {
   const insights = [];
+  const userLanguage = detectUserLanguage(content);
+  const isVietnamese = userLanguage === "vi";
 
   if (balance) {
     if (parseFloat(balance.positiveRatio) > 60) {
       insights.push(
-        "✨ Your writing shows a predominantly positive outlook - that's wonderful!"
+        isVietnamese
+          ? "✨ Bài viết của bạn thể hiện một cái nhìn tích cực - điều đó thật tuyệt vời!"
+          : "✨ Your writing shows a predominantly positive outlook - that's wonderful!"
       );
     }
 
     if (parseFloat(balance.anxietyRatio) > 30) {
       insights.push(
-        "⚠️ You frequently mention anxiety-related feelings. Consider stress management techniques."
+        isVietnamese
+          ? "⚠️ Bạn thường xuyên đề cập đến những cảm xúc lo âu. Hãy cân nhắc các kỹ thuật quản lý căng thẳng."
+          : "⚠️ You frequently mention anxiety-related feelings. Consider stress management techniques."
       );
     }
 
     if (parseFloat(balance.depressionRatio) > 25) {
       insights.push(
-        "💙 You've mentioned some difficult emotions. Remember that it's okay to seek support."
+        isVietnamese
+          ? "💙 Bạn đã đề cập đến một số cảm xúc khó khăn. Hãy nhớ rằng việc tìm kiếm sự hỗ trợ là điều bình thường."
+          : "💙 You've mentioned some difficult emotions. Remember that it's okay to seek support."
       );
     }
 
@@ -574,14 +749,18 @@ const generateKeywordInsights = (categoryFreq, balance) => {
       categoryFreq.negative + categoryFreq.anxiety + categoryFreq.depression
     ) {
       insights.push(
-        "🌟 Your emotional vocabulary leans positive - you're building emotional resilience!"
+        isVietnamese
+          ? "🌟 Từ vựng cảm xúc của bạn nghiêng về tích cực - bạn đang xây dựng khả năng phục hồi cảm xúc!"
+          : "🌟 Your emotional vocabulary leans positive - you're building emotional resilience!"
       );
     }
   }
 
   if (insights.length === 0) {
     insights.push(
-      "📝 Keep journaling to build a clearer picture of your emotional patterns."
+      isVietnamese
+        ? "📝 Hãy tiếp tục viết nhật ký để xây dựng một bức tranh rõ ràng hơn về các mẫu cảm xúc của bạn."
+        : "📝 Keep journaling to build a clearer picture of your emotional patterns."
     );
   }
 
@@ -594,56 +773,154 @@ const generateKeywordInsights = (categoryFreq, balance) => {
 const generateRecommendations = (
   depressionCount,
   anxietyCount,
-  positiveCount
+  positiveCount,
+  content = ""
 ) => {
   const recommendations = [];
+  const userLanguage = detectUserLanguage(content);
+  const isVietnamese = userLanguage === "vi";
 
   if (depressionCount >= 2) {
     recommendations.push(
-      "Consider reaching out to a mental health professional for support"
+      isVietnamese
+        ? "Hãy cân nhắc liên hệ với chuyên gia sức khỏe tâm thần để được hỗ trợ"
+        : "Consider reaching out to a mental health professional for support"
     );
     recommendations.push(
-      "Try to engage in activities that previously brought you joy"
+      isVietnamese
+        ? "Hãy thử tham gia vào các hoạt động mà trước đây đã mang lại niềm vui cho bạn"
+        : "Try to engage in activities that previously brought you joy"
     );
   }
 
   if (anxietyCount >= 2) {
     recommendations.push(
-      "Practice deep breathing exercises when feeling overwhelmed"
+      isVietnamese
+        ? "Thực hành các bài tập thở sâu khi cảm thấy choáng ngợp"
+        : "Practice deep breathing exercises when feeling overwhelmed"
     );
     recommendations.push(
-      "Try grounding techniques: name 5 things you can see, 4 you can touch, 3 you can hear"
+      isVietnamese
+        ? "Hãy thử các kỹ thuật grounding: đặt tên 5 thứ bạn có thể nhìn thấy, 4 thứ bạn có thể chạm, 3 thứ bạn có thể nghe"
+        : "Try grounding techniques: name 5 things you can see, 4 you can touch, 3 you can hear"
     );
   }
 
   if (positiveCount >= 2) {
     recommendations.push(
-      "Great job recognizing positive moments - continue building on this strength"
+      isVietnamese
+        ? "Làm tốt lắm khi nhận ra những khoảnh khắc tích cực - hãy tiếp tục xây dựng trên điểm mạnh này"
+        : "Great job recognizing positive moments - continue building on this strength"
     );
   }
 
   if (recommendations.length === 0) {
     recommendations.push(
-      "Continue journaling to track your emotional patterns"
+      isVietnamese
+        ? "Hãy tiếp tục viết nhật ký để theo dõi các mẫu cảm xúc của bạn"
+        : "Continue journaling to track your emotional patterns"
     );
-    recommendations.push("Remember to practice self-compassion");
+    recommendations.push(
+      isVietnamese
+        ? "Hãy nhớ thực hành lòng tự trắc ẩn"
+        : "Remember to practice self-compassion"
+    );
   }
 
   return recommendations;
 };
 
 /**
- * Detect user language preference
+ * Detect user language preference from content
+ * @param {string} content - Journal content to analyze
  * @returns {string} 'vi' for Vietnamese, 'en' for English
  */
-const detectUserLanguage = () => {
-  // For now, default to Vietnamese since this is a Vietnamese project
-  // In the future, this could be based on:
-  // - User's browser language
-  // - User's profile settings
-  // - User's previous journal entries language
-  // - IP geolocation
-  return "vi"; // Default to Vietnamese
+const detectUserLanguage = (content = "") => {
+  if (!content || typeof content !== "string") {
+    return "vi"; // Default to Vietnamese
+  }
+
+  // Vietnamese character patterns
+  const vietnamesePatterns = [
+    /[àáạảãâầấậẩẫăằắặẳẵ]/gi,
+    /[èéẹẻẽêềếệểễ]/gi,
+    /[ìíịỉĩ]/gi,
+    /[òóọỏõôồốộổỗơờớợởỡ]/gi,
+    /[ùúụủũưừứựửữ]/gi,
+    /[ỳýỵỷỹ]/gi,
+    /[đ]/gi,
+    /[ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴ]/gi,
+    /[ÈÉẸẺẼÊỀẾỆỂỄ]/gi,
+    /[ÌÍỊỈĨ]/gi,
+    /[ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠ]/gi,
+    /[ÙÚỤỦŨƯỪỨỰỬỮ]/gi,
+    /[ỲÝỴỶỸ]/gi,
+    /[Đ]/gi,
+  ];
+
+  // Count Vietnamese characters
+  let vietnameseCount = 0;
+  vietnamesePatterns.forEach((pattern) => {
+    const matches = content.match(pattern);
+    if (matches) {
+      vietnameseCount += matches.length;
+    }
+  });
+
+  // If content has Vietnamese characters, return Vietnamese
+  if (vietnameseCount > 0) {
+    return "vi";
+  }
+
+  // Check for common Vietnamese words
+  const vietnameseWords = [
+    "tôi",
+    "mình",
+    "của",
+    "và",
+    "là",
+    "có",
+    "được",
+    "sẽ",
+    "đã",
+    "đang",
+    "hôm nay",
+    "ngày mai",
+    "hôm qua",
+    "cảm thấy",
+    "nghĩ",
+    "biết",
+    "muốn",
+    "cần",
+    "phải",
+    "nên",
+    "không",
+    "chưa",
+    "đã",
+    "sẽ",
+    "đang",
+    "vẫn",
+    "rất",
+    "quá",
+    "khá",
+    "hơi",
+    "cực kỳ",
+    "hoàn toàn",
+    "tuyệt đối",
+  ];
+
+  const contentLower = content.toLowerCase();
+  const vietnameseWordCount = vietnameseWords.filter((word) =>
+    contentLower.includes(word)
+  ).length;
+
+  // If content has Vietnamese words, return Vietnamese
+  if (vietnameseWordCount > 0) {
+    return "vi";
+  }
+
+  // Default to Vietnamese for Vietnamese users
+  return "vi";
 };
 
 /**
@@ -657,45 +934,121 @@ const analyzeEmotionAndSentiment = async (content) => {
       throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
+    // Detect language from content
+    const userLanguage = detectUserLanguage(content);
+    const isVietnamese = userLanguage === "vi";
+
     const prompt = `Analyze the following journal entry for emotions, sentiment, and mental health indicators. Provide a comprehensive analysis in JSON format.
 
 Journal Content: "${content}"
 
+${
+  isVietnamese
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All analysis results, suggestions, and recommendations should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All analysis results, suggestions, and recommendations should be in English.`
+}
+
+${
+  isVietnamese
+    ? `Use Vietnamese language naturally and culturally appropriate. Be empathetic and supportive in your analysis.`
+    : `Use English language naturally. Be empathetic and supportive in your analysis.`
+}
+
 Please analyze and return a JSON object with the following structure:
 {
   "emotionAnalysis": {
-    "primaryEmotion": "string (anxiety, sadness, joy, anger, fear, etc.)",
+    "primaryEmotion": "${
+      isVietnamese
+        ? "string (lo âu, buồn bã, vui vẻ, tức giận, sợ hãi, etc.)"
+        : "string (anxiety, sadness, joy, anger, fear, etc.)"
+    }",
     "emotionScore": "number (0-10)",
     "confidence": "number (0-1)"
   },
   "sentimentAnalysis": {
-    "overallSentiment": "string (positive, negative, neutral)",
+    "overallSentiment": "${
+      isVietnamese
+        ? "string (tích cực, tiêu cực, trung tính)"
+        : "string (positive, negative, neutral)"
+    }",
     "sentimentScore": "number (-1 to 1)"
   },
   "mentalHealthIndicators": {
-    "stressLevel": "string (low, moderate, high, very_high)",
-    "anxietyLevel": "string (low, moderate, high, very_high)",
+    "stressLevel": "${
+      isVietnamese
+        ? "string (thấp, trung bình, cao, rất cao)"
+        : "string (low, moderate, high, very_high)"
+    }",
+    "anxietyLevel": "${
+      isVietnamese
+        ? "string (thấp, trung bình, cao, rất cao)"
+        : "string (low, moderate, high, very_high)"
+    }",
     "depressionSigns": "boolean",
-    "riskLevel": "string (low, medium, high)"
+    "riskLevel": "${
+      isVietnamese
+        ? "string (thấp, trung bình, cao)"
+        : "string (low, medium, high)"
+    }"
   },
   "improvementSuggestions": {
-    "immediateActions": ["array of immediate actions"],
-    "shortTermGoals": ["array of short-term goals"],
-    "longTermStrategies": ["array of long-term strategies"],
+    "immediateActions": ["${
+      isVietnamese
+        ? "array of immediate actions in Vietnamese"
+        : "array of immediate actions in English"
+    }"],
+    "shortTermGoals": ["${
+      isVietnamese
+        ? "array of short-term goals in Vietnamese"
+        : "array of short-term goals in English"
+    }"],
+    "longTermStrategies": ["${
+      isVietnamese
+        ? "array of long-term strategies in Vietnamese"
+        : "array of long-term strategies in English"
+    }"],
     "timeframes": {
-      "immediate": "string (e.g., 'Next 30 minutes')",
-      "shortTerm": "string (e.g., 'Next 1-2 weeks')",
-      "longTerm": "string (e.g., 'Next 1-3 months')"
+      "immediate": "${
+        isVietnamese
+          ? "string (e.g., 'Trong 30 phút tới')"
+          : "string (e.g., 'Next 30 minutes')"
+      }",
+      "shortTerm": "${
+        isVietnamese
+          ? "string (e.g., 'Trong 1-2 tuần tới')"
+          : "string (e.g., 'Next 1-2 weeks')"
+      }",
+      "longTerm": "${
+        isVietnamese
+          ? "string (e.g., 'Trong 1-3 tháng tới')"
+          : "string (e.g., 'Next 1-3 months')"
+      }"
     }
   },
   "keywords": {
-    "emotional": ["array of emotional keywords"],
-    "behavioral": ["array of behavioral keywords"],
-    "physical": ["array of physical keywords"]
+    "emotional": ["${
+      isVietnamese
+        ? "array of emotional keywords in Vietnamese"
+        : "array of emotional keywords in English"
+    }"],
+    "behavioral": ["${
+      isVietnamese
+        ? "array of behavioral keywords in Vietnamese"
+        : "array of behavioral keywords in English"
+    }"],
+    "physical": ["${
+      isVietnamese
+        ? "array of physical keywords in Vietnamese"
+        : "array of physical keywords in English"
+    }"]
   }
 }
 
-Focus on providing practical, actionable advice. Be empathetic and supportive in your analysis.`;
+${
+  isVietnamese
+    ? `Focus on providing practical, actionable advice in Vietnamese. Be empathetic and supportive in your analysis. Use natural Vietnamese language that is culturally appropriate.`
+    : `Focus on providing practical, actionable advice in English. Be empathetic and supportive in your analysis.`
+}`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -786,50 +1139,134 @@ const performMentalHealthAssessment = async (content) => {
       throw new Error("AI model not available - GEMINI_API_KEY required");
     }
 
+    // Detect language from content
+    const userLanguage = detectUserLanguage(content);
+    const isVietnamese = userLanguage === "vi";
+
     const prompt = `Perform a comprehensive mental health assessment of the following journal entry. Provide detailed analysis in JSON format.
 
 Journal Content: "${content}"
+
+${
+  isVietnamese
+    ? `IMPORTANT: The user wrote in Vietnamese, so please respond in Vietnamese (Tiếng Việt). All assessment results, recommendations, and plans should be in Vietnamese.`
+    : `IMPORTANT: The user wrote in English, so please respond in English. All assessment results, recommendations, and plans should be in English.`
+}
+
+${
+  isVietnamese
+    ? `Use Vietnamese language naturally and culturally appropriate. Be empathetic and supportive in your assessment.`
+    : `Use English language naturally. Be empathetic and supportive in your assessment.`
+}
 
 Please analyze and return a JSON object with the following structure:
 {
   "assessment": {
     "overallScore": "number (0-10)",
-    "mentalHealthStatus": "string (excellent, good, fair, concerning, critical)",
+    "mentalHealthStatus": "${
+      isVietnamese
+        ? "string (xuất sắc, tốt, khá, đáng lo ngại, nghiêm trọng)"
+        : "string (excellent, good, fair, concerning, critical)"
+    }",
     "assessmentDate": "string (ISO date)"
   },
   "depressionIndicators": {
     "score": "number (0-10)",
-    "level": "string (minimal, mild, moderate, severe)",
-    "symptoms": ["array of identified symptoms"],
-    "recommendations": ["array of specific recommendations"]
+    "level": "${
+      isVietnamese
+        ? "string (tối thiểu, nhẹ, trung bình, nghiêm trọng)"
+        : "string (minimal, mild, moderate, severe)"
+    }",
+    "symptoms": ["${
+      isVietnamese
+        ? "array of identified symptoms in Vietnamese"
+        : "array of identified symptoms in English"
+    }"],
+    "recommendations": ["${
+      isVietnamese
+        ? "array of specific recommendations in Vietnamese"
+        : "array of specific recommendations in English"
+    }"]
   },
   "anxietyIndicators": {
     "score": "number (0-10)",
-    "level": "string (minimal, mild, moderate, severe)",
-    "symptoms": ["array of identified symptoms"],
-    "recommendations": ["array of specific recommendations"]
+    "level": "${
+      isVietnamese
+        ? "string (tối thiểu, nhẹ, trung bình, nghiêm trọng)"
+        : "string (minimal, mild, moderate, severe)"
+    }",
+    "symptoms": ["${
+      isVietnamese
+        ? "array of identified symptoms in Vietnamese"
+        : "array of identified symptoms in English"
+    }"],
+    "recommendations": ["${
+      isVietnamese
+        ? "array of specific recommendations in Vietnamese"
+        : "array of specific recommendations in English"
+    }"]
   },
   "stressIndicators": {
     "score": "number (0-10)",
-    "level": "string (low, moderate, high, very_high)",
-    "sources": ["array of stress sources"],
-    "recommendations": ["array of specific recommendations"]
+    "level": "${
+      isVietnamese
+        ? "string (thấp, trung bình, cao, rất cao)"
+        : "string (low, moderate, high, very_high)"
+    }",
+    "sources": ["${
+      isVietnamese
+        ? "array of stress sources in Vietnamese"
+        : "array of stress sources in English"
+    }"],
+    "recommendations": ["${
+      isVietnamese
+        ? "array of specific recommendations in Vietnamese"
+        : "array of specific recommendations in English"
+    }"]
   },
   "riskAssessment": {
-    "overallRisk": "string (low, medium, high, very_high)",
-    "immediateConcerns": ["array of immediate concerns"],
+    "overallRisk": "${
+      isVietnamese
+        ? "string (thấp, trung bình, cao, rất cao)"
+        : "string (low, medium, high, very_high)"
+    }",
+    "immediateConcerns": ["${
+      isVietnamese
+        ? "array of immediate concerns in Vietnamese"
+        : "array of immediate concerns in English"
+    }"],
     "followUpNeeded": "boolean",
     "professionalHelpRecommended": "boolean"
   },
   "personalizedPlan": {
-    "dailyActions": ["array of daily actions"],
-    "weeklyGoals": ["array of weekly goals"],
-    "monthlyObjectives": ["array of monthly objectives"],
-    "resources": ["array of helpful resources"]
+    "dailyActions": ["${
+      isVietnamese
+        ? "array of daily actions in Vietnamese"
+        : "array of daily actions in English"
+    }"],
+    "weeklyGoals": ["${
+      isVietnamese
+        ? "array of weekly goals in Vietnamese"
+        : "array of weekly goals in English"
+    }"],
+    "monthlyObjectives": ["${
+      isVietnamese
+        ? "array of monthly objectives in Vietnamese"
+        : "array of monthly objectives in English"
+    }"],
+    "resources": ["${
+      isVietnamese
+        ? "array of helpful resources in Vietnamese"
+        : "array of helpful resources in English"
+    }"]
   }
 }
 
-Be thorough, empathetic, and provide actionable recommendations. If serious concerns are detected, recommend professional help.`;
+${
+  isVietnamese
+    ? `Be thorough, empathetic, and provide actionable recommendations in Vietnamese. Use natural Vietnamese language that is culturally appropriate. If serious concerns are detected, recommend professional help in Vietnamese.`
+    : `Be thorough, empathetic, and provide actionable recommendations in English. If serious concerns are detected, recommend professional help in English.`
+}`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
