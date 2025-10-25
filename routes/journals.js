@@ -2296,4 +2296,81 @@ router.get("/:id/print/download", requireAuth, async function (req, res) {
   }
 });
 
+// Get AI analysis history for a journal
+router.get("/:id/analysis-history", requireAuth, async function (req, res) {
+  try {
+    const journalId = req.params.id;
+    const userId = req.user._id;
+
+    // Verify journal belongs to user
+    const journal = await Journal.findOne({ _id: journalId, userId: userId });
+    if (!journal) {
+      return res.status(404).json({
+        success: false,
+        message: "Journal not found",
+      });
+    }
+
+    // Get all AI analyses for this journal
+    const analyses = await AIAnalysis.find({ journalId: journalId })
+      .sort({ createdAt: -1 }) // Most recent first
+      .select("results createdAt")
+      .lean();
+
+    res.json({
+      success: true,
+      analyses: analyses,
+    });
+  } catch (error) {
+    console.error("Error fetching analysis history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching analysis history",
+      error: error.message,
+    });
+  }
+});
+
+// Save AI analysis history for a journal
+router.post("/:id/analysis-history", requireAuth, async function (req, res) {
+  try {
+    const journalId = req.params.id;
+    const userId = req.user._id;
+    const analysisData = req.body;
+
+    // Verify journal belongs to user
+    const journal = await Journal.findOne({ _id: journalId, userId: userId });
+    if (!journal) {
+      return res.status(404).json({
+        success: false,
+        message: "Journal not found",
+      });
+    }
+
+    // Save AI analysis with required fields
+    const analysis = new AIAnalysis({
+      journalId: journalId,
+      userId: userId,
+      analysisType: "emotion", // Default to emotion analysis
+      content: journal.content || "Journal content", // Use journal content
+      results: analysisData,
+    });
+
+    await analysis.save();
+
+    res.json({
+      success: true,
+      message: "Analysis history saved successfully",
+      analysis: analysis,
+    });
+  } catch (error) {
+    console.error("Error saving analysis history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error saving analysis history",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;
