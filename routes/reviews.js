@@ -246,9 +246,15 @@ router.get("/public", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 10, 50);
     const skip = parseInt(req.query.skip) || 0;
 
-    const [reviews, totalCount] = await Promise.all([
+    const [reviews, totalCount, avgRating] = await Promise.all([
       Review.getVisibleReviews(limit, skip),
       Review.countDocuments({ isVisible: true }),
+      Review.aggregate([
+        { $match: { isVisible: true } },
+        { $group: { _id: null, avgRating: { $avg: "$rating" } } },
+      ]).then((result) =>
+        result.length > 0 ? Math.round(result[0].avgRating * 10) / 10 : 0
+      ),
     ]);
 
     res.json({
@@ -262,6 +268,7 @@ router.get("/public", async (req, res) => {
           createdAt: review.createdAt,
         })),
         totalCount,
+        avgRating,
         hasMore: skip + limit < totalCount,
       },
     });
