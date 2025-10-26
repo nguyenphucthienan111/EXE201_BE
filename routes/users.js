@@ -5,20 +5,19 @@ var User = require("../models/User");
 var Journal = require("../models/Journal");
 var Mood = require("../models/Mood");
 var multer = require("multer");
-var path = require("path");
-var fs = require("fs");
+var cloudinary = require("../config/cloudinary");
+var { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-// Configure multer for avatar uploads
-var storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/avatars/");
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename: userId_timestamp.extension
-    var userId = req.user._id.toString();
-    var timestamp = Date.now();
-    var extension = path.extname(file.originalname);
-    cb(null, `${userId}_${timestamp}${extension}`);
+// Configure multer for Cloudinary uploads
+var storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "everquill/avatars",
+    allowed_formats: ["jpg", "jpeg", "png", "gif"],
+    transformation: [
+      { width: 500, height: 500, crop: "fill", gravity: "face" },
+      { quality: "auto" },
+    ],
   },
 });
 
@@ -66,11 +65,8 @@ var upload = multer({
 router.get("/me", requireAuth, function (req, res) {
   const user = req.user;
 
-  // Convert relative avatar path to full URL if it exists
+  // Avatar URL is already full URL from Cloudinary
   var avatarUrl = user.avatar;
-  if (avatarUrl && avatarUrl.startsWith("/uploads/")) {
-    avatarUrl = `${req.protocol}://${req.get("host")}${avatarUrl}`;
-  }
 
   res.json({
     id: user._id,
@@ -459,27 +455,30 @@ router.post(
         });
       }
 
-      // Delete old avatar if exists
-      if (req.user.avatar && req.user.avatar.includes("uploads/avatars/")) {
-        var oldAvatarPath = path.join(__dirname, "..", req.user.avatar);
-        if (fs.existsSync(oldAvatarPath)) {
-          fs.unlinkSync(oldAvatarPath);
+      // Delete old avatar from Cloudinary if exists
+      if (req.user.avatar && req.user.avatar.includes("cloudinary.com")) {
+        try {
+          // Extract public_id from Cloudinary URL
+          var urlParts = req.user.avatar.split("/");
+          var publicId = urlParts[urlParts.length - 1].split(".")[0];
+          var folder = "everquill/avatars";
+          var fullPublicId = `${folder}/${publicId}`;
+
+          await cloudinary.uploader.destroy(fullPublicId);
+        } catch (deleteErr) {
+          console.log("Could not delete old avatar:", deleteErr.message);
         }
       }
 
-      // Update user avatar with new file path
-      var avatarUrl = `/uploads/avatars/${req.file.filename}`;
-      req.user.avatar = avatarUrl;
+      // Update user avatar with Cloudinary URL
+      req.user.avatar = req.file.path;
       await req.user.save();
-
-      // Return full URL for frontend
-      var fullAvatarUrl = `${req.protocol}://${req.get("host")}${avatarUrl}`;
 
       res.json({
         success: true,
         message: "Avatar updated successfully",
         data: {
-          avatarUrl: fullAvatarUrl,
+          avatarUrl: req.file.path,
         },
       });
     } catch (err) {
@@ -508,6 +507,24 @@ router.post(
  */
 router.delete("/avatar", requireAuth, async function (req, res) {
   try {
+    // Delete avatar from Cloudinary if exists
+    if (req.user.avatar && req.user.avatar.includes("cloudinary.com")) {
+      try {
+        // Extract public_id from Cloudinary URL
+        var urlParts = req.user.avatar.split("/");
+        var publicId = urlParts[urlParts.length - 1].split(".")[0];
+        var folder = "everquill/avatars";
+        var fullPublicId = `${folder}/${publicId}`;
+
+        await cloudinary.uploader.destroy(fullPublicId);
+      } catch (deleteErr) {
+        console.log(
+          "Could not delete avatar from Cloudinary:",
+          deleteErr.message
+        );
+      }
+    }
+
     req.user.avatar = null;
     await req.user.save();
 

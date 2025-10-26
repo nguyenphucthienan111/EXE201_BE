@@ -5,24 +5,19 @@ const Journal = require("../models/Journal");
 const { requireAuth } = require("../middlewares/auth");
 const { requireAdminAuth } = require("../middlewares/adminAuth");
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const cloudinary = require("../config/cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = "uploads/templates";
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
-    );
+// Configure multer for Cloudinary uploads
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "everquill/templates",
+    allowed_formats: ["jpg", "jpeg", "png", "gif"],
+    transformation: [
+      { width: 800, height: 600, crop: "fill" },
+      { quality: "auto" },
+    ],
   },
 });
 
@@ -372,13 +367,19 @@ router.delete("/:templateId", requireAuth, async (req, res) => {
       });
     }
 
-    // Delete template file from filesystem
+    // Delete template file from Cloudinary
     try {
-      if (template.imageUrl && fs.existsSync(template.imageUrl)) {
-        fs.unlinkSync(template.imageUrl);
+      if (template.imageUrl && template.imageUrl.includes("cloudinary.com")) {
+        // Extract public_id from Cloudinary URL
+        const urlParts = template.imageUrl.split("/");
+        const publicId = urlParts[urlParts.length - 1].split(".")[0];
+        const folder = "everquill/templates";
+        const fullPublicId = `${folder}/${publicId}`;
+
+        await cloudinary.uploader.destroy(fullPublicId);
       }
     } catch (fileError) {
-      console.error("Error deleting template file:", fileError);
+      console.error("Error deleting template file from Cloudinary:", fileError);
     }
 
     await JournalTemplate.findByIdAndDelete(templateId);
@@ -647,21 +648,35 @@ router.delete("/admin/:templateId", requireAdminAuth, async (req, res) => {
       });
     }
 
-    // Delete template file from filesystem
+    // Delete template file from Cloudinary
     try {
-      if (template.imageUrl && fs.existsSync(template.imageUrl)) {
-        fs.unlinkSync(template.imageUrl);
+      if (template.imageUrl && template.imageUrl.includes("cloudinary.com")) {
+        // Extract public_id from Cloudinary URL
+        const urlParts = template.imageUrl.split("/");
+        const publicId = urlParts[urlParts.length - 1].split(".")[0];
+        const folder = "everquill/templates";
+        const fullPublicId = `${folder}/${publicId}`;
+
+        await cloudinary.uploader.destroy(fullPublicId);
       }
       // Also delete thumbnail if it's different from main image
       if (
         template.thumbnailUrl &&
         template.thumbnailUrl !== template.imageUrl &&
-        fs.existsSync(template.thumbnailUrl)
+        template.thumbnailUrl.includes("cloudinary.com")
       ) {
-        fs.unlinkSync(template.thumbnailUrl);
+        const urlParts = template.thumbnailUrl.split("/");
+        const publicId = urlParts[urlParts.length - 1].split(".")[0];
+        const folder = "everquill/templates";
+        const fullPublicId = `${folder}/${publicId}`;
+
+        await cloudinary.uploader.destroy(fullPublicId);
       }
     } catch (fileError) {
-      console.error("Error deleting template files:", fileError);
+      console.error(
+        "Error deleting template files from Cloudinary:",
+        fileError
+      );
       // Continue with database deletion even if file deletion fails
     }
 
