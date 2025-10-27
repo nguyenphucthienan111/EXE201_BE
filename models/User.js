@@ -1,4 +1,5 @@
 var mongoose = require("mongoose");
+var bcrypt = require("bcryptjs");
 
 var userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
@@ -8,7 +9,6 @@ var userSchema = new mongoose.Schema({
   isEmailVerified: { type: Boolean, default: false },
   emailVerificationCode: { type: String },
   resetPasswordCode: { type: String },
-  refreshToken: { type: String },
   plan: { type: String, enum: ["free", "premium"], default: "free" },
   premiumExpiresAt: { type: Date },
   premiumStartedAt: { type: Date },
@@ -16,7 +16,35 @@ var userSchema = new mongoose.Schema({
   avatar: { type: String },
   pendingEmail: { type: String },
   createdAt: { type: Date, default: Date.now },
+  refreshTokenHash: { type: String },
+  refreshTokenExpiresAt: { type: Date },
+  refreshTokenId: { type: String },
 });
+
+userSchema.methods.setRefreshToken = async function (
+  secret,
+  expiresAt,
+  tokenId
+) {
+  const salt = await bcrypt.genSalt(10);
+  this.refreshTokenHash = await bcrypt.hash(secret, salt);
+  this.refreshTokenExpiresAt = expiresAt;
+  this.refreshTokenId = tokenId;
+};
+
+userSchema.methods.clearRefreshToken = function () {
+  this.refreshTokenHash = undefined;
+  this.refreshTokenExpiresAt = undefined;
+  this.refreshTokenId = undefined;
+};
+
+userSchema.methods.validateRefreshToken = async function (secret, tokenId) {
+  if (!this.refreshTokenHash) return false;
+  if (!this.refreshTokenId || this.refreshTokenId !== tokenId) return false;
+  if (this.refreshTokenExpiresAt && this.refreshTokenExpiresAt < new Date())
+    return false;
+  return bcrypt.compare(secret, this.refreshTokenHash);
+};
 
 // Method to check if premium is active
 userSchema.methods.isPremiumActive = function () {

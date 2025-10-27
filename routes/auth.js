@@ -8,6 +8,50 @@ var { v4: uuidv4 } = require("uuid");
 var User = require("../models/User");
 var mailer = require("../utils/mailer");
 var { requireAuth } = require("../middlewares/auth");
+var crypto = require("crypto");
+
+const REFRESH_TOKEN_MAX_AGE_DAYS_RAW = Number.parseInt(
+  process.env.REFRESH_TOKEN_DAYS || "30",
+  10
+);
+const REFRESH_TOKEN_MAX_AGE_DAYS =
+  Number.isFinite(REFRESH_TOKEN_MAX_AGE_DAYS_RAW) &&
+  REFRESH_TOKEN_MAX_AGE_DAYS_RAW > 0
+    ? REFRESH_TOKEN_MAX_AGE_DAYS_RAW
+    : 30;
+
+function issueAccessToken(userId) {
+  return jwt.sign({ sub: userId }, process.env.JWT_SECRET || "secret", {
+    expiresIn: "7d",
+  });
+}
+
+function createRefreshTokenPayload() {
+  const tokenId = uuidv4();
+  const secret = crypto.randomBytes(48).toString("hex");
+  const token = `${tokenId}.${secret}`;
+  const expiresAt = new Date(
+    Date.now() + REFRESH_TOKEN_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+  );
+  return { token, tokenId, secret, expiresAt };
+}
+
+function setRefreshCookie(res, token, expiresAt) {
+  res.cookie("refresh_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    expires: expiresAt,
+  });
+}
+
+function clearRefreshCookie(res) {
+  res.clearCookie("refresh_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+}
 
 /**
  * @openapi
@@ -146,49 +190,65 @@ router.post(
  *             properties:
  *               email: { type: string }
  *               password: { type: string }
+ *               rememberMe: {
+ *                 type: boolean,
+ *                 description: "If true, issues a long-lived refresh token stored as HttpOnly cookie",
+ *                 default: false,
+ *               }
  *     responses:
  *       200: { description: JWT issued }
  */
 router.post(
   "/login",
   [body("email").isEmail(), body("password").isLength({ min: 6 })],
-  function (req, res) {
+  async function (req, res) {
     var errors = validationResult(req);
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
-    var email = req.body.email.toLowerCase();
-    User.findOne({ email: email })
-      .then(function (user) {
-        if (!user)
-          return res.status(401).json({ message: "Invalid credentials" });
-        if (!user.isEmailVerified)
-          return res.status(403).json({ message: "Email not verified" });
-        return bcrypt
-          .compare(req.body.password, user.passwordHash)
-          .then(function (ok) {
-            if (!ok)
-              return res.status(401).json({ message: "Invalid credentials" });
-            var token = jwt.sign(
-              { sub: user._id },
-              process.env.JWT_SECRET || "secret",
-              { expiresIn: "7d" }
-            );
-            res.json({
-              token: token,
-              user: {
-                id: user._id,
-                email: user.email,
-                plan: user.plan,
-                role: user.role,
-                name: user.name,
-                avatar: user.avatar,
-              },
-            });
-          });
-      })
-      .catch(function (err) {
-        res.status(500).json({ message: err.message });
+
+    try {
+      const email = req.body.email.toLowerCase();
+      const remember = Boolean(req.body.rememberMe);
+
+      const user = await User.findOne({ email: email });
+      if (!user)
+        return res.status(401).json({ message: "Invalid credentials" });
+      if (!user.isEmailVerified)
+        return res.status(403).json({ message: "Email not verified" });
+
+      const ok = await bcrypt.compare(req.body.password, user.passwordHash);
+      if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+
+      const accessToken = issueAccessToken(user._id);
+
+      if (remember) {
+        const { token, tokenId, secret, expiresAt } =
+          createRefreshTokenPayload();
+        await user.setRefreshToken(secret, expiresAt, tokenId);
+        await user.save();
+        setRefreshCookie(res, token, expiresAt);
+      } else {
+        user.clearRefreshToken();
+        await user.save();
+        clearRefreshCookie(res);
+      }
+
+      res.json({
+        accessToken,
+        token: accessToken,
+        user: {
+          id: user._id,
+          email: user.email,
+          plan: user.plan,
+          role: user.role,
+          name: user.name,
+          avatar: user.avatar,
+        },
       });
+    } catch (err) {
+      console.error("Login error", err);
+      res.status(500).json({ message: err.message });
+    }
   }
 );
 
@@ -209,24 +269,43 @@ router.post(
  *     responses:
  *       200: { description: JWT }
  */
-router.post("/refresh", function (req, res) {
-  var refresh = req.body.refreshToken;
-  if (!refresh)
-    return res.status(400).json({ message: "Missing refreshToken" });
-  User.findOne({ refreshToken: refresh })
-    .then(function (user) {
-      if (!user)
-        return res.status(401).json({ message: "Invalid refresh token" });
-      var token = jwt.sign(
-        { sub: user._id },
-        process.env.JWT_SECRET || "secret",
-        { expiresIn: "7d" }
-      );
-      res.json({ token: token });
-    })
-    .catch(function (err) {
-      res.status(500).json({ message: err.message });
-    });
+router.post("/refresh", async function (req, res) {
+  try {
+    const cookieToken = req.cookies?.refresh_token;
+    if (!cookieToken)
+      return res.status(400).json({ message: "Missing refresh token" });
+
+    const parts = cookieToken.split(".");
+    if (parts.length !== 2)
+      return res.status(400).json({ message: "Invalid refresh token format" });
+
+    const [tokenId, secret] = parts;
+
+    const user = await User.findOne({ refreshTokenId: tokenId });
+    if (!user)
+      return res.status(401).json({ message: "Invalid refresh token" });
+
+    const isValid = await user.validateRefreshToken(secret, tokenId);
+    if (!isValid)
+      return res.status(401).json({ message: "Invalid refresh token" });
+
+    const accessToken = issueAccessToken(user._id);
+
+    const {
+      token,
+      tokenId: newId,
+      secret: newSecret,
+      expiresAt,
+    } = createRefreshTokenPayload();
+    await user.setRefreshToken(newSecret, expiresAt, newId);
+    await user.save();
+    setRefreshCookie(res, token, expiresAt);
+
+    res.json({ accessToken, token: accessToken });
+  } catch (err) {
+    console.error("Refresh error", err);
+    res.status(500).json({ message: err.message });
+  }
 });
 
 /** Forgot password - send code */
@@ -403,14 +482,18 @@ router.post(
  *     responses:
  *       200: { description: Logged out }
  */
-router.post("/logout", requireAuth, function (req, res) {
-  User.findByIdAndUpdate(req.user._id, { refreshToken: null })
-    .then(function () {
-      res.json({ message: "Logged out" });
-    })
-    .catch(function (err) {
-      res.status(500).json({ message: err.message });
-    });
+router.post("/logout", requireAuth, async function (req, res) {
+  try {
+    const user = await User.findById(req.user._id);
+    if (user) {
+      user.clearRefreshToken();
+      await user.save();
+    }
+    clearRefreshCookie(res);
+    res.json({ message: "Logged out" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 module.exports = router;
