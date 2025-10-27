@@ -112,3 +112,4 @@ async function migrateTemplates() {
 
 // Run migration
 migrateTemplates();
+

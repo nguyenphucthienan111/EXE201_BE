@@ -65,3 +65,4 @@ async function migrateAvatars() {
 
 // Run migration
 migrateAvatars();
+

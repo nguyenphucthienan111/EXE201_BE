@@ -181,6 +181,7 @@ router.post(
                 plan: user.plan,
                 role: user.role,
                 name: user.name,
+                avatar: user.avatar,
               },
             });
           });
