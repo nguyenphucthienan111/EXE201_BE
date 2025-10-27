@@ -152,6 +152,13 @@ router.post(
 
       const { name, description } = req.body;
 
+      if (!name || !name.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Name is required",
+        });
+      }
+
       if (!req.file) {
         return res.status(400).json({
           success: false,
@@ -163,7 +170,7 @@ router.post(
       const thumbnailUrl = req.file.path; // Same as main image for now
 
       const template = new JournalTemplate({
-        name,
+        name: name.trim(),
         description,
         category: "user",
         imageUrl: req.file.path,
@@ -185,6 +192,8 @@ router.post(
             imageUrl: template.imageUrl,
             thumbnailUrl: template.thumbnailUrl,
             category: template.category,
+            uploadedBy: template.uploadedBy,
+            tags: template.tags,
           },
         },
       });
@@ -194,9 +203,15 @@ router.post(
       // Clean up uploaded file if template creation failed
       if (req.file && req.file.path) {
         try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          console.error("Error cleaning up uploaded file:", unlinkError);
+          const imagePublicId = req.file.public_id || req.file.filename;
+          if (imagePublicId) {
+            await cloudinary.uploader.destroy(imagePublicId);
+          }
+        } catch (cleanupError) {
+          console.error(
+            "Error cleaning up uploaded template on Cloudinary:",
+            cleanupError
+          );
         }
       }
 
@@ -493,9 +508,15 @@ router.post(
       // Clean up uploaded file if template creation failed
       if (req.file && req.file.path) {
         try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          console.error("Error cleaning up uploaded file:", unlinkError);
+          const imagePublicId = req.file.public_id || req.file.filename;
+          if (imagePublicId) {
+            await cloudinary.uploader.destroy(imagePublicId);
+          }
+        } catch (cleanupError) {
+          console.error(
+            "Error cleaning up uploaded admin template on Cloudinary:",
+            cleanupError
+          );
         }
       }
 
