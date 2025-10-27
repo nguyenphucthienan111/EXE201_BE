@@ -5,6 +5,12 @@ var JournalTemplate = require("../models/JournalTemplate");
 var AIAnalysis = require("../models/AIAnalysis");
 var { requireAuth, requirePremium } = require("../middlewares/auth");
 var {
+  encryptValue,
+  decryptValue,
+  hasEncryptionConfig,
+  isProbablyEncrypted,
+} = require("../utils/encryption");
+var {
   enforceJournalCreateLimit,
   trackJournalCreate,
   enforceBasicSuggestLimit,
@@ -157,10 +163,10 @@ router.post(
         richContent: richContent || "",
         // Keep plain text content for backward compatibility
         content: otherData.content || "",
+        tags: otherData.tags,
       };
 
-      const journal = new Journal(data);
-      await journal.save();
+      const journal = await Journal.create(data);
 
       trackJournalCreate(req, res, function () {
         res.status(201).json({
@@ -546,19 +552,21 @@ router.get("/:id", requireAuth, function (req, res) {
  *       404:
  *         description: Not found or not owned by user
  */
-router.put("/:id", requireAuth, function (req, res) {
-  Journal.findOneAndUpdate(
-    { _id: req.params.id, userId: req.user._id },
-    req.body,
-    { new: true }
-  )
-    .then(function (doc) {
-      if (!doc) return res.status(404).end();
-      res.json(doc);
-    })
-    .catch(function (err) {
-      res.status(500).json({ message: err.message });
-    });
+router.put("/:id", requireAuth, async function (req, res) {
+  try {
+    const payload = { ...req.body };
+
+    const updated = await Journal.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id },
+      payload,
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).end();
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // Delete
@@ -2312,10 +2320,28 @@ router.get("/:id/analysis-history", requireAuth, async function (req, res) {
     }
 
     // Get all AI analyses for this journal
-    const analyses = await AIAnalysis.find({ journalId: journalId })
+    const analysisDocs = await AIAnalysis.find({ journalId: journalId })
       .sort({ createdAt: -1 }) // Most recent first
       .select("results createdAt")
       .lean();
+
+    const analyses = analysisDocs.map((doc) => {
+      if (!hasEncryptionConfig()) return doc;
+
+      let parsed = doc.results;
+      try {
+        const decrypted = decryptValue(doc.results);
+        parsed =
+          typeof decrypted === "string" ? JSON.parse(decrypted) : decrypted;
+      } catch (err) {
+        console.error("Failed to decrypt analysis results", err.message);
+      }
+
+      return {
+        ...doc,
+        results: parsed,
+      };
+    });
 
     res.json({
       success: true,

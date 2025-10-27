@@ -5,7 +5,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Check required environment variables
-const requiredEnvVars = ["MONGODB_URI", "JWT_SECRET"];
+const requiredEnvVars = ["MONGO_URI", "JWT_SECRET"];
 const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
 
 if (missingVars.length > 0) {
@@ -75,7 +75,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Mongo connection
-var mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/everquill";
+var mongoUri = process.env.MONGO_URI;
 mongoose
   .connect(mongoUri)
   .then(function () {

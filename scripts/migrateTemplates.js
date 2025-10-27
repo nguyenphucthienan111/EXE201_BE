@@ -5,9 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 // Connect to MongoDB
-mongoose.connect(
-  process.env.MONGODB_URI || "mongodb://localhost:27017/everquill"
-);
+mongoose.connect(process.env.MONGO_URI);
 
 async function migrateTemplates() {
   try {
@@ -112,4 +110,3 @@ async function migrateTemplates() {
 
 // Run migration
 migrateTemplates();
-

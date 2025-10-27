@@ -12,7 +12,8 @@
     "create-admin": "node scripts/createAdmin.js",
     "migrate-avatars": "node scripts/migrateAvatars.js",
     "migrate-templates": "node scripts/migrateTemplates.js",
-    "build": "echo 'Build completed'"
+    "build": "echo 'Build completed'",
+    "encrypt-journals": "node scripts/encryptJournals.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

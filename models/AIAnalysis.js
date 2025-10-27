@@ -1,4 +1,10 @@
 var mongoose = require("mongoose");
+var {
+  encryptValue,
+  decryptValue,
+  hasEncryptionConfig,
+  isProbablyEncrypted,
+} = require("../utils/encryption");
 
 var aiAnalysisSchema = new mongoose.Schema({
   userId: {
@@ -47,7 +53,40 @@ aiAnalysisSchema.index({ journalId: 1 });
 // Pre-save middleware
 aiAnalysisSchema.pre("save", function (next) {
   this.updatedAt = new Date();
+  if (hasEncryptionConfig()) {
+    if (
+      this.isModified("content") &&
+      this.content &&
+      !isProbablyEncrypted(this.content)
+    ) {
+      this.content = encryptValue(this.content);
+    }
+    if (this.isModified("results") && this.results) {
+      const serialized =
+        typeof this.results === "string"
+          ? this.results
+          : JSON.stringify(this.results);
+      if (!isProbablyEncrypted(serialized)) {
+        this.results = encryptValue(serialized);
+      }
+    }
+  }
   next();
+});
+
+aiAnalysisSchema.post("init", function (doc) {
+  if (hasEncryptionConfig()) {
+    if (doc.content) doc.content = decryptValue(doc.content);
+    if (doc.results) {
+      try {
+        const decrypted = decryptValue(doc.results);
+        doc.results =
+          typeof decrypted === "string" ? JSON.parse(decrypted) : decrypted;
+      } catch (err) {
+        console.error("Decrypt AI analysis results failed", err.message);
+      }
+    }
+  }
 });
 
 // Static methods
