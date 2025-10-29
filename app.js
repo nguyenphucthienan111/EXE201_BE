@@ -67,7 +67,7 @@ app.use(
       if (!origin) {
         return callback(null, true);
       }
-      
+
       // In development or if origin is from same domain (Swagger UI), allow
       if (
         process.env.NODE_ENV !== "production" ||
@@ -75,12 +75,12 @@ app.use(
       ) {
         return callback(null, true);
       }
-      
+
       // Allow whitelisted origins
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      
+
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
