@@ -46,9 +46,7 @@ console.log(
 );
 var app = express();
 
-// view engine setup
-app.set("views", path.join(__dirname, "views"));
-app.set("view engine", "jade");
+// No view engine needed (API only)
 
 app.use(logger("dev"));
 const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:5173")
