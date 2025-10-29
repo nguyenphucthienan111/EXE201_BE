@@ -93,47 +93,42 @@ mongoose
 require("./config/passport");
 app.use(passport.initialize());
 
-// Swagger setup - only in development
-if (process.env.NODE_ENV !== "production") {
-  var swaggerSpec = swaggerJsdoc({
-    definition: {
-      openapi: "3.0.0",
-      info: { title: "Everquill API", version: "1.0.0" },
-      components: {
-        securitySchemes: {
-          bearerAuth: {
-            type: "http",
-            scheme: "bearer",
-            bearerFormat: "JWT",
-          },
+// Swagger setup with CDN (works on Vercel)
+var swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: "3.0.0",
+    info: { title: "Everquill API", version: "1.0.0" },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
         },
       },
-      security: [{ bearerAuth: [] }],
-      servers: [{ url: "http://localhost:" + (process.env.PORT || 3000) }],
     },
-    apis: ["./routes/*.js", "./models/*.js"],
-  });
-  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-} else {
-  // Production: return simple JSON for /api/docs
-  app.get("/api/docs", function (req, res) {
-    res.json({
-      message: "API Documentation is available in development mode only",
-      endpoints: {
-        auth: "/api/auth",
-        users: "/api/users",
-        journals: "/api/journals",
-        moods: "/api/moods",
-        templates: "/api/templates",
-        reviews: "/api/reviews",
-        payments: "/api/payments",
-        notifications: "/api/notifications",
-        admin: "/api/admin",
-        contact: "/api/contact",
-      },
-    });
-  });
-}
+    security: [{ bearerAuth: [] }],
+    servers: [
+      { url: "https://exe-201-be-black.vercel.app", description: "Production" },
+      { url: "http://localhost:3000", description: "Development" },
+    ],
+  },
+  apis: ["./routes/*.js", "./models/*.js"],
+});
+
+// Use CDN for Swagger UI assets (Vercel-compatible)
+app.use(
+  "/api/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCssUrl:
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui.min.css",
+    customJs: [
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui-bundle.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui-standalone-preset.js",
+    ],
+  })
+);
 
 app.use("/", indexRouter);
 app.use("/api/users", usersRouter);
