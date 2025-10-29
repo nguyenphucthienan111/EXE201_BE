@@ -93,26 +93,47 @@ mongoose
 require("./config/passport");
 app.use(passport.initialize());
 
-// Swagger setup
-var swaggerSpec = swaggerJsdoc({
-  definition: {
-    openapi: "3.0.0",
-    info: { title: "Everquill API", version: "1.0.0" },
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "JWT",
+// Swagger setup - only in development
+if (process.env.NODE_ENV !== "production") {
+  var swaggerSpec = swaggerJsdoc({
+    definition: {
+      openapi: "3.0.0",
+      info: { title: "Everquill API", version: "1.0.0" },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+          },
         },
       },
+      security: [{ bearerAuth: [] }],
+      servers: [{ url: "http://localhost:" + (process.env.PORT || 3000) }],
     },
-    security: [{ bearerAuth: [] }],
-    servers: [{ url: "http://localhost:" + (process.env.PORT || 3000) }],
-  },
-  apis: ["./routes/*.js", "./models/*.js"],
-});
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+    apis: ["./routes/*.js", "./models/*.js"],
+  });
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+} else {
+  // Production: return simple JSON for /api/docs
+  app.get("/api/docs", function (req, res) {
+    res.json({
+      message: "API Documentation is available in development mode only",
+      endpoints: {
+        auth: "/api/auth",
+        users: "/api/users",
+        journals: "/api/journals",
+        moods: "/api/moods",
+        templates: "/api/templates",
+        reviews: "/api/reviews",
+        payments: "/api/payments",
+        notifications: "/api/notifications",
+        admin: "/api/admin",
+        contact: "/api/contact",
+      },
+    });
+  });
+}
 
 app.use("/", indexRouter);
 app.use("/api/users", usersRouter);
