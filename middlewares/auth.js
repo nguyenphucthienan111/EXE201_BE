@@ -1,9 +1,20 @@
 var passport = require("passport");
 
 function requireAuth(req, res, next) {
+  // Debug: log authorization header
+  const authHeader = req.headers.authorization;
+  console.log("[AUTH] Authorization header:", authHeader ? authHeader.substring(0, 50) + "..." : "missing");
+  
   return passport.authenticate("jwt", { session: false }, function (err, user) {
-    if (err) return res.status(500).json({ message: "Auth error" });
-    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (err) {
+      console.log("[AUTH] Error:", err.message);
+      return res.status(500).json({ message: "Auth error" });
+    }
+    if (!user) {
+      console.log("[AUTH] No user found - token invalid or expired");
+      return res.status(401).json({ message: "Unauthorized", detail: "Invalid or expired token" });
+    }
+    console.log("[AUTH] Success - User:", user.email);
     req.user = user;
     next();
   })(req, res, next);
