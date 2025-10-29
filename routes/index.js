@@ -3,7 +3,12 @@ var router = express.Router();
 
 /* GET home page. */
 router.get("/", function (req, res, next) {
-  res.render("index", { title: "Express" });
+  res.json({
+    name: "EverQuill API",
+    version: "1.0.0",
+    status: "running",
+    documentation: "/api/docs",
+  });
 });
 
 // Redirect helper to Swagger UI
