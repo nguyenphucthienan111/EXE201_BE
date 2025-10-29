@@ -63,14 +63,24 @@ if (!allowedOrigins.includes(backendUrl)) {
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like Swagger UI, mobile apps, curl, Postman)
+      // Allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) {
         return callback(null, true);
       }
+      
+      // In development or if origin is from same domain (Swagger UI), allow
+      if (
+        process.env.NODE_ENV !== "production" ||
+        (origin && origin.includes("exe-201-be-black.vercel.app"))
+      ) {
+        return callback(null, true);
+      }
+      
       // Allow whitelisted origins
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
+      
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
