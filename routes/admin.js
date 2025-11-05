@@ -566,42 +566,57 @@ router.get("/revenue", requireAdminAuth, async (req, res) => {
   try {
     const period = req.query.period || "monthly";
 
-    // Calculate date ranges for the CURRENT period, not rolling windows
+    // Calculate date ranges for two purposes:
+    // 1) startDate: current period summary (today/week/month/year)
+    // 2) trendStartDate: historical window for chart (e.g., last 30 days / 12 months)
     const now = new Date();
-    let startDate, groupFormat;
+    let startDate, trendStartDate, groupFormat;
 
     switch (period) {
       case "daily": {
-        // Start of today
+        // Summary: start of today
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        // Trends: last 30 days
+        trendStartDate = new Date(
+          startDate.getTime() - 29 * 24 * 60 * 60 * 1000
+        );
         groupFormat = "%Y-%m-%d"; // group by day
         break;
       }
       case "weekly": {
-        // Start of ISO week (Mon). getDay(): Sun=0..Sat=6
+        // Summary: start of current week (Mon)
         const day = now.getDay();
-        const diffToMonday = (day + 6) % 7; // 0 for Mon, 6 for Sun
+        const diffToMonday = (day + 6) % 7;
         const weekStart = new Date(now);
         weekStart.setDate(now.getDate() - diffToMonday);
         weekStart.setHours(0, 0, 0, 0);
         startDate = weekStart;
+        // Trends: last 12 weeks
+        trendStartDate = new Date(
+          weekStart.getTime() - 11 * 7 * 24 * 60 * 60 * 1000
+        );
         groupFormat = "%Y-%U"; // group by week number of year
         break;
       }
       case "monthly": {
-        // Start of current month
+        // Summary: start of current month
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        // Trends: last 12 months
+        trendStartDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
         groupFormat = "%Y-%m"; // group by month
         break;
       }
       case "yearly": {
-        // Start of current year
+        // Summary: start of current year
         startDate = new Date(now.getFullYear(), 0, 1);
+        // Trends: last 5 years
+        trendStartDate = new Date(now.getFullYear() - 4, 0, 1);
         groupFormat = "%Y"; // group by year
         break;
       }
       default: {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        trendStartDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
         groupFormat = "%Y-%m";
       }
     }
@@ -623,13 +638,13 @@ router.get("/revenue", requireAdminAuth, async (req, res) => {
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
 
-    // Revenue trends
+    // Revenue trends (historical window)
     const trends = await Payment.aggregate([
       {
         $match: {
           status: "success",
           paymentType: "premium_subscription",
-          paidAt: { $gte: startDate },
+          paidAt: { $gte: trendStartDate },
         },
       },
       {
@@ -702,10 +717,8 @@ router.get("/revenue", requireAdminAuth, async (req, res) => {
               : 0,
         },
         period,
-        dateRange: {
-          start: startDate,
-          end: now,
-        },
+        dateRange: { start: startDate, end: now },
+        trendDateRange: { start: trendStartDate, end: now },
       },
     });
   } catch (error) {
