@@ -566,27 +566,44 @@ router.get("/revenue", requireAdminAuth, async (req, res) => {
   try {
     const period = req.query.period || "monthly";
 
-    // Calculate date ranges
+    // Calculate date ranges for the CURRENT period, not rolling windows
     const now = new Date();
     let startDate, groupFormat;
 
     switch (period) {
-      case "daily":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
-        groupFormat = "%Y-%m-%d";
+      case "daily": {
+        // Start of today
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        groupFormat = "%Y-%m-%d"; // group by day
         break;
-      case "weekly":
-        startDate = new Date(now.getTime() - 12 * 7 * 24 * 60 * 60 * 1000); // Last 12 weeks
-        groupFormat = "%Y-%U";
+      }
+      case "weekly": {
+        // Start of ISO week (Mon). getDay(): Sun=0..Sat=6
+        const day = now.getDay();
+        const diffToMonday = (day + 6) % 7; // 0 for Mon, 6 for Sun
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - diffToMonday);
+        weekStart.setHours(0, 0, 0, 0);
+        startDate = weekStart;
+        groupFormat = "%Y-%U"; // group by week number of year
         break;
-      case "monthly":
-        startDate = new Date(now.getTime() - 12 * 30 * 24 * 60 * 60 * 1000); // Last 12 months
+      }
+      case "monthly": {
+        // Start of current month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        groupFormat = "%Y-%m"; // group by month
+        break;
+      }
+      case "yearly": {
+        // Start of current year
+        startDate = new Date(now.getFullYear(), 0, 1);
+        groupFormat = "%Y"; // group by year
+        break;
+      }
+      default: {
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         groupFormat = "%Y-%m";
-        break;
-      case "yearly":
-        startDate = new Date(now.getTime() - 5 * 365 * 24 * 60 * 60 * 1000); // Last 5 years
-        groupFormat = "%Y";
-        break;
+      }
     }
 
     // Revenue summary

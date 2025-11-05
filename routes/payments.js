@@ -203,7 +203,7 @@ router.post("/premium", requireAuth, async (req, res) => {
     const orderCode = parseInt(Date.now().toString().slice(-9));
     const orderId = `premium_${userId}_${Date.now()}`;
 
-    // Create PayOS payment data
+    // Create PayOS payment data (allow FE/mobile to override return/cancel)
     const paymentData = {
       orderCode: orderCode,
       amount: premiumAmount,
@@ -216,9 +216,15 @@ router.post("/premium", requireAuth, async (req, res) => {
         },
       ],
       returnUrl:
+        (req.body &&
+          typeof req.body.returnUrl === "string" &&
+          req.body.returnUrl.trim()) ||
         process.env.PAYOS_RETURN_URL ||
         `${process.env.CLIENT_URL}/payment/success`,
       cancelUrl:
+        (req.body &&
+          typeof req.body.cancelUrl === "string" &&
+          req.body.cancelUrl.trim()) ||
         process.env.PAYOS_CANCEL_URL ||
         `${process.env.CLIENT_URL}/payment/cancel`,
     };
